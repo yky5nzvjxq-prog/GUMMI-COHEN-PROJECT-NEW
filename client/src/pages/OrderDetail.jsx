@@ -192,7 +192,7 @@ export default function OrderDetail() {
 
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold text-navy-600">{order.orderNumber}</h1>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">{order.orderNumber}</h1>
           <span className={`px-3 py-1 rounded-full text-xs font-medium ${st.class}`}>{st.label}</span>
         </div>
         <button
@@ -204,9 +204,9 @@ export default function OrderDetail() {
       </div>
 
       {/* Order Info Card */}
-      <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-        <h2 className="font-semibold text-navy-600 mb-4">פרטי הזמנה</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-y-3 gap-x-6 text-sm">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 mb-6">
+        <h2 className="font-semibold text-gray-800 dark:text-gray-100 mb-4">פרטי הזמנה</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-y-3 gap-x-6 text-sm dark:text-gray-300">
           {[
             ['לקוח', order.customerName],
             ['שם החלק', order.partName],
@@ -220,16 +220,16 @@ export default function OrderDetail() {
             ['תאריך', formatDate(order.date)],
           ].map(([label, val]) => (
             <div key={label}>
-              <span className="text-gray-500">{label}: </span>
+              <span className="text-gray-500 dark:text-gray-400">{label}: </span>
               <span className="font-medium">{val || '—'}</span>
             </div>
           ))}
         </div>
-        {order.notes && <p className="mt-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">{order.notes}</p>}
+        {order.notes && <p className="mt-3 text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">{order.notes}</p>}
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-xl">
+      <div className="flex gap-1 mb-6 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
         {tabs.map(tab => {
           const Icon = tab.icon;
           return (
@@ -238,8 +238,8 @@ export default function OrderDetail() {
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex-1 justify-center ${
                 activeTab === tab.key
-                  ? 'bg-white text-navy-600 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
               }`}
             >
               <Icon size={16} />
@@ -277,16 +277,16 @@ export default function OrderDetail() {
           />
 
           {/* Quality Docs Upload */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
             <div className="flex items-center gap-3 mb-4">
               <FolderOpen size={20} className="text-purple-500" />
-              <h3 className="font-semibold text-navy-600">מסמכי איכות</h3>
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">מסמכי איכות</h3>
             </div>
 
             {(files.qualityDocs || []).length > 0 && (
               <div className="space-y-2 mb-4">
                 {files.qualityDocs.map((doc, idx) => (
-                  <div key={idx} className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded-lg text-sm">
+                  <div key={idx} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 px-4 py-2 rounded-lg text-sm dark:text-gray-300">
                     <span>{doc.originalName}</span>
                     <button
                       onClick={() => handleRemoveQualityDoc(idx)}
@@ -299,7 +299,7 @@ export default function OrderDetail() {
               </div>
             )}
 
-            <label className="flex items-center gap-2 border border-dashed border-gray-300 rounded-lg p-3 cursor-pointer hover:border-purple-400 hover:bg-purple-50/30 transition-colors text-sm text-gray-500">
+            <label className="flex items-center gap-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-3 cursor-pointer hover:border-purple-400 hover:bg-purple-50/30 dark:hover:bg-purple-900/20 transition-colors text-sm text-gray-500 dark:text-gray-400">
               <Upload size={16} />
               {uploading.quality ? 'מעלה...' : 'לחץ להעלאת מסמכי איכות (ניתן לבחור מספר קבצים)'}
               <input type="file" className="hidden" multiple accept=".pdf,.xls,.xlsx,.doc,.docx,.png,.jpg" onChange={handleUploadQualityDocs} />
@@ -310,14 +310,14 @@ export default function OrderDetail() {
 
       {/* ═══ TAB: Dimensions ═══ */}
       {activeTab === 'dimensions' && (
-        <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="font-semibold text-navy-600">טבלת מידות</h2>
+            <h2 className="font-semibold text-gray-800 dark:text-gray-100">טבלת מידות</h2>
             <div className="flex gap-2">
-              <button onClick={addDim} className="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+              <button onClick={addDim} className="text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-300 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
                 <Plus size={14} /> הוסף שורה
               </button>
-              <button onClick={handleSave} className="text-sm bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+              <button onClick={handleSave} className="text-sm bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
                 <Save size={14} /> שמור
               </button>
             </div>
@@ -325,14 +325,14 @@ export default function OrderDetail() {
 
           {dims.length === 0 ? (
             <div className="text-center py-10">
-              <AlertTriangle size={32} className="mx-auto text-gray-300 mb-3" />
+              <AlertTriangle size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
               <p className="text-sm text-gray-400 mb-2">אין מידות — הוסף שורות ידנית</p>
-              <p className="text-xs text-gray-300">המערכת לא ממציאה נתונים. יש להזין מידות מהשרטוט או מהזמנת הלקוח.</p>
+              <p className="text-xs text-gray-300 dark:text-gray-500">המערכת לא ממציאה נתונים. יש להזין מידות מהשרטוט או מהזמנת הלקוח.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-navy-600 text-white">
+                <thead className="bg-gray-800 dark:bg-gray-700 text-white">
                   <tr>
                     <th className="p-2 text-right w-10">#</th>
                     <th className="p-2 text-right">סוג מידה / סימול</th>
@@ -344,9 +344,9 @@ export default function OrderDetail() {
                     <th className="p-2 w-10"></th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="dark:text-gray-300">
                   {dims.map((dim, idx) => (
-                    <tr key={idx} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${dim.flaggedForReview ? 'ring-1 ring-yellow-400' : ''}`}>
+                    <tr key={idx} className={`${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-750'} ${dim.flaggedForReview ? 'ring-1 ring-yellow-400' : ''}`}>
                       <td className="p-2 text-gray-400">{idx + 1}</td>
                       {['symbol', 'nominal', 'tolerance', 'min', 'max', 'remarks'].map(field => (
                         <td key={field} className="p-1">
@@ -355,7 +355,7 @@ export default function OrderDetail() {
                             step="any"
                             value={dim[field] ?? ''}
                             onChange={e => updateDim(idx, field, e.target.value)}
-                            className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-blue-400 outline-none"
+                            className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-blue-400 outline-none"
                           />
                         </td>
                       ))}
@@ -372,7 +372,7 @@ export default function OrderDetail() {
           )}
 
           {dims.some(d => d.flaggedForReview) && (
-            <div className="mt-4 flex items-center gap-2 text-yellow-700 bg-yellow-50 px-4 py-2 rounded-lg text-sm">
+            <div className="mt-4 flex items-center gap-2 text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/30 px-4 py-2 rounded-lg text-sm">
               <AlertTriangle size={16} />
               <span>שורות מסומנות בצהוב דורשות אימות ידני — נא לבדוק את הנתונים</span>
             </div>
@@ -382,10 +382,10 @@ export default function OrderDetail() {
 
       {/* ═══ TAB: Raw Material ═══ */}
       {activeTab === 'rawMaterial' && (
-        <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="font-semibold text-navy-600">פרטי חומר גלם</h2>
-            <button onClick={handleSave} className="text-sm bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+            <h2 className="font-semibold text-gray-800 dark:text-gray-100">פרטי חומר גלם</h2>
+            <button onClick={handleSave} className="text-sm bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
               <Save size={14} /> שמור
             </button>
           </div>
@@ -405,31 +405,31 @@ export default function OrderDetail() {
               { key: 'color', label: 'צבע', placeholder: '' },
             ].map(({ key, label, placeholder }) => (
               <div key={key}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>
                 <input
                   type="text"
                   value={rawMat[key] || ''}
                   onChange={e => updateRawMat(key, e.target.value)}
                   placeholder={placeholder}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none"
+                  className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none"
                 />
               </div>
             ))}
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">הערות חומר</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">הערות חומר</label>
               <textarea
                 value={rawMat.notes || ''}
                 onChange={e => updateRawMat('notes', e.target.value)}
                 rows={2}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none"
+                className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none"
               />
             </div>
           </div>
 
           {order.material && (
-            <div className="mt-4 bg-blue-50 px-4 py-3 rounded-lg text-sm">
-              <span className="text-blue-600 font-medium">חומר מוגדר בהזמנה: </span>
-              <span className="text-blue-800">{order.material}</span>
+            <div className="mt-4 bg-blue-50 dark:bg-blue-900/30 px-4 py-3 rounded-lg text-sm">
+              <span className="text-blue-600 dark:text-blue-400 font-medium">חומר מוגדר בהזמנה: </span>
+              <span className="text-blue-800 dark:text-blue-300">{order.material}</span>
             </div>
           )}
         </div>
@@ -439,8 +439,8 @@ export default function OrderDetail() {
       {activeTab === 'generate' && (
         <div className="space-y-4">
           {/* Pre-generation checklist */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="font-semibold text-navy-600 mb-4">בדיקת מוכנות</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+            <h2 className="font-semibold text-gray-800 dark:text-gray-100 mb-4">בדיקת מוכנות</h2>
             <div className="space-y-2">
               <CheckItem ok={!!files.drawing} label="שרטוט טכני הועלה" />
               <CheckItem ok={!!files.customerOrder} label="הזמנת לקוח הועלה" />
@@ -451,8 +451,8 @@ export default function OrderDetail() {
 
           {/* Approve Order */}
           {(order.status === 'pending_review' || order.status === 'new' || order.status === 'drawing_uploaded') && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h3 className="font-semibold text-navy-600 mb-2">אישור הזמנה</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">אישור הזמנה</h3>
               <p className="text-xs text-gray-400 mb-4">
                 לאחר בדיקת כל הנתונים — אשר את ההזמנה לפני יצירת דוחות.
               </p>
@@ -476,8 +476,8 @@ export default function OrderDetail() {
           )}
 
           {/* Generate Excel Report */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h3 className="font-semibold text-navy-600 mb-2">דוח Excel (מידות + חומר גלם)</h3>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">דוח Excel (מידות + חומר גלם)</h3>
             <p className="text-xs text-gray-400 mb-4">
               יצור קובץ Excel עם שני גיליונות: דוח מידות וגיליון חומר גלם. כל הנתונים מבוססים אך ורק על מה שהוזן.
             </p>
@@ -511,8 +511,8 @@ export default function OrderDetail() {
           </div>
 
           {/* Generate C.O.C. as DOCX */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h3 className="font-semibold text-navy-600 mb-2">תעודת התאמה (C.O.C.) — Word</h3>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">תעודת התאמה (C.O.C.) — Word</h3>
             <p className="text-xs text-gray-400 mb-4">
               תעודת התאמה / הצהרת יצרן בפורמט Word (.docx), מקושרת להזמנה, לשרטוט, לדוח המידות ולחומר הגלם.
             </p>
@@ -550,14 +550,14 @@ export default function OrderDetail() {
       {/* Delete Confirmation Modal */}
       {showDelete && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm mx-4">
-            <h3 className="text-lg font-bold text-red-600 mb-2">מחיקת הזמנה</h3>
-            <p className="text-sm text-gray-600 mb-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 max-w-sm mx-4">
+            <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">מחיקת הזמנה</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
               האם למחוק את הזמנה <strong>{order.orderNumber}</strong>?
               <br />ההזמנה תועבר לסל המחזור וניתן יהיה לשחזר אותה.
             </p>
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setShowDelete(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+              <button onClick={() => setShowDelete(false)} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
                 ביטול
               </button>
               <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-500">
@@ -575,15 +575,15 @@ export default function OrderDetail() {
 
 function FileUploadCard({ title, icon, file, uploading, accept, onChange, hint, onDelete }) {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6">
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
       <div className="flex items-center gap-3 mb-4">
         {icon}
-        <h3 className="font-semibold text-navy-600">{title}</h3>
+        <h3 className="font-semibold text-gray-800 dark:text-gray-100">{title}</h3>
       </div>
 
       {file ? (
         <div className="flex items-center gap-3">
-          <div className="bg-green-50 text-green-700 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+          <div className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
             <CheckCircle size={14} />
             <strong>{file.originalName}</strong>
           </div>
@@ -598,9 +598,9 @@ function FileUploadCard({ title, icon, file, uploading, accept, onChange, hint, 
           )}
         </div>
       ) : (
-        <label className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-300 rounded-xl p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors">
+        <label className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 dark:hover:bg-blue-900/20 transition-colors">
           <Upload size={28} className="text-gray-400" />
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-gray-500 dark:text-gray-400">
             {uploading ? 'מעלה...' : `לחץ כאן להעלאת ${title} (${hint})`}
           </span>
           <input type="file" className="hidden" accept={accept} onChange={onChange} />
@@ -612,7 +612,7 @@ function FileUploadCard({ title, icon, file, uploading, accept, onChange, hint, 
 
 function CheckItem({ ok, label }) {
   return (
-    <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${ok ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-400'}`}>
+    <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${ok ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-gray-50 dark:bg-gray-700 text-gray-400'}`}>
       {ok ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
       {label}
     </div>

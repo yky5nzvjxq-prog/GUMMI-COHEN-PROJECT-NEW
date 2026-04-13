@@ -27,12 +27,12 @@ export default function Dashboard() {
     <div className="p-8">
       <div className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-navy-600">לוח בקרה</h1>
-          <p className="text-gray-500 text-sm mt-1">סקירה כללית של מערכת ניהול ההזמנות</p>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">לוח בקרה</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">סקירה כללית של מערכת ניהול ההזמנות</p>
         </div>
         <Link
           to="/new-order"
-          className="bg-navy-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-navy-500 transition-colors flex items-center gap-2"
+          className="bg-gray-800 dark:bg-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
         >
           <PlusCircle size={16} />
           הזמנה חדשה
@@ -41,39 +41,39 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
         {cards.map(({ label, value, icon: Icon, color, link }) => (
-          <Link key={label} to={link} className="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
+          <Link key={label} to={link} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
             <div className={`${color} text-white p-3 rounded-lg`}>
               <Icon size={22} />
             </div>
             <div>
-              <div className="text-2xl font-bold text-navy-600">{value}</div>
-              <div className="text-xs text-gray-500">{label}</div>
+              <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{label}</div>
             </div>
           </Link>
         ))}
       </div>
 
       {recent.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm p-12 text-center">
-          <Package size={48} className="mx-auto text-gray-200 mb-4" />
-          <h3 className="text-lg font-medium text-gray-500 mb-2">אין הזמנות עדיין</h3>
-          <p className="text-sm text-gray-400 mb-4">צור את ההזמנה הראשונה שלך כדי להתחיל</p>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center">
+          <Package size={48} className="mx-auto text-gray-200 dark:text-gray-600 mb-4" />
+          <h3 className="text-lg font-medium text-gray-500 dark:text-gray-400 mb-2">אין הזמנות עדיין</h3>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">צור את ההזמנה הראשונה שלך כדי להתחיל</p>
           <Link
             to="/new-order"
-            className="inline-flex items-center gap-2 bg-navy-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-navy-500"
+            className="inline-flex items-center gap-2 bg-gray-800 dark:bg-gray-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-700 dark:hover:bg-gray-600"
           >
             <PlusCircle size={16} />
             הזמנה חדשה
           </Link>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm">
-          <div className="p-5 border-b flex justify-between items-center">
-            <h2 className="font-semibold text-navy-600">הזמנות אחרונות</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm">
+          <div className="p-5 border-b dark:border-gray-700 flex justify-between items-center">
+            <h2 className="font-semibold text-gray-800 dark:text-gray-100">הזמנות אחרונות</h2>
             <Link to="/orders" className="text-sm text-blue-500 hover:underline">הצג הכל</Link>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-500">
+            <thead className="bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
               <tr>
                 <th className="text-right p-3">מס' הזמנה</th>
                 <th className="text-right p-3">לקוח</th>
@@ -83,11 +83,11 @@ export default function Dashboard() {
                 <th className="p-3"></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="dark:text-gray-300">
               {recent.map(order => {
                 const st = statusBadge(order.status);
                 return (
-                  <tr key={order.id} className="border-t hover:bg-gray-50">
+                  <tr key={order.id} className="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="p-3 font-medium">{order.orderNumber}</td>
                     <td className="p-3">{order.customerName}</td>
                     <td className="p-3">{order.partName}</td>

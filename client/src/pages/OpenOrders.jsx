@@ -1,27 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchOrders, fetchFolders, deleteOrder, downloadReportUrl, downloadCOCUrl } from '../utils/api';
-import { statusBadge, formatDate, STATUS_MAP } from '../utils/helpers';
+import { statusBadge, formatDate } from '../utils/helpers';
 import { useToast } from '../components/Toast';
-import { Search, Download, Award, Trash2 } from 'lucide-react';
+import { Search, Download, Award, Trash2, ClipboardList } from 'lucide-react';
 
-export default function OrdersList() {
+const OPEN_STATUSES = ['new', 'pending_review', 'drawing_uploaded', 'report_generated'];
+
+export default function OpenOrders() {
   const [orders, setOrders] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const toast = useToast();
   const [folders, setFolders] = useState([]);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [folderFilter, setFolderFilter] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
-    fetchOrders().then(setOrders);
+    fetchOrders().then(all => setOrders(all.filter(o => OPEN_STATUSES.includes(o.status))));
     fetchFolders().then(data => { if (Array.isArray(data)) setFolders(data); });
   }, []);
 
-  // Build folder options with hierarchy
   function buildFolderOptions(parentId = null, depth = 0) {
     return folders
       .filter(f => f.parentId === parentId)
@@ -38,17 +38,19 @@ export default function OrdersList() {
       o.customerName?.toLowerCase().includes(s) ||
       o.partName?.toLowerCase().includes(s) ||
       o.drawingNumber?.toLowerCase().includes(s);
-    const matchStatus = statusFilter === 'all' || o.status === statusFilter;
     const matchFolder = folderFilter === 'all' || (folderFilter === 'unfiled' ? !o.folderId : o.folderId === folderFilter);
     const matchDateFrom = !dateFrom || o.date >= dateFrom;
     const matchDateTo = !dateTo || o.date <= dateTo;
-    return matchSearch && matchStatus && matchFolder && matchDateFrom && matchDateTo;
+    return matchSearch && matchFolder && matchDateFrom && matchDateTo;
   });
 
   return (
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">מאגר הזמנות</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">הזמנות פתוחות</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{filtered.length} הזמנות בתהליך</p>
+        </div>
         <Link to="/new-order" className="bg-gray-800 dark:bg-gray-700 text-white px-5 py-2 rounded-lg text-sm hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors">
           + הזמנה חדשה
         </Link>
@@ -68,16 +70,6 @@ export default function OrdersList() {
                 className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg pr-9 pl-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none"
               />
             </div>
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
-            >
-              <option value="all">כל הסטטוסים</option>
-              {Object.entries(STATUS_MAP).map(([key, { label }]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
             <select
               value={folderFilter}
               onChange={e => setFolderFilter(e.target.value)}
@@ -101,9 +93,9 @@ export default function OrdersList() {
               <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
                 className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none" />
             </div>
-            {(search || statusFilter !== 'all' || folderFilter !== 'all' || dateFrom || dateTo) && (
+            {(search || folderFilter !== 'all' || dateFrom || dateTo) && (
               <button
-                onClick={() => { setSearch(''); setStatusFilter('all'); setFolderFilter('all'); setDateFrom(''); setDateTo(''); }}
+                onClick={() => { setSearch(''); setFolderFilter('all'); setDateFrom(''); setDateTo(''); }}
                 className="text-xs text-red-400 hover:text-red-600"
               >
                 נקה סינון
@@ -168,7 +160,12 @@ export default function OrdersList() {
               );
             })}
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="p-8 text-center text-gray-400">לא נמצאו הזמנות</td></tr>
+              <tr>
+                <td colSpan={8} className="p-12 text-center text-gray-400">
+                  <ClipboardList size={40} className="mx-auto mb-3 opacity-50" />
+                  <p>אין הזמנות פתוחות</p>
+                </td>
+              </tr>
             )}
           </tbody>
         </table>

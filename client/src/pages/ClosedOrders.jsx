@@ -1,27 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchOrders, fetchFolders, deleteOrder, downloadReportUrl, downloadCOCUrl } from '../utils/api';
-import { statusBadge, formatDate, STATUS_MAP } from '../utils/helpers';
-import { useToast } from '../components/Toast';
-import { Search, Download, Award, Trash2 } from 'lucide-react';
+import { fetchOrders, fetchFolders, downloadReportUrl, downloadCOCUrl } from '../utils/api';
+import { statusBadge, formatDate } from '../utils/helpers';
+import { Search, Download, Award, Archive } from 'lucide-react';
 
-export default function OrdersList() {
+const CLOSED_STATUSES = ['approved', 'reviewed'];
+
+export default function ClosedOrders() {
   const [orders, setOrders] = useState([]);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const toast = useToast();
   const [folders, setFolders] = useState([]);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [folderFilter, setFolderFilter] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
-    fetchOrders().then(setOrders);
+    fetchOrders().then(all => setOrders(all.filter(o => CLOSED_STATUSES.includes(o.status))));
     fetchFolders().then(data => { if (Array.isArray(data)) setFolders(data); });
   }, []);
 
-  // Build folder options with hierarchy
   function buildFolderOptions(parentId = null, depth = 0) {
     return folders
       .filter(f => f.parentId === parentId)
@@ -38,20 +35,17 @@ export default function OrdersList() {
       o.customerName?.toLowerCase().includes(s) ||
       o.partName?.toLowerCase().includes(s) ||
       o.drawingNumber?.toLowerCase().includes(s);
-    const matchStatus = statusFilter === 'all' || o.status === statusFilter;
     const matchFolder = folderFilter === 'all' || (folderFilter === 'unfiled' ? !o.folderId : o.folderId === folderFilter);
     const matchDateFrom = !dateFrom || o.date >= dateFrom;
     const matchDateTo = !dateTo || o.date <= dateTo;
-    return matchSearch && matchStatus && matchFolder && matchDateFrom && matchDateTo;
+    return matchSearch && matchFolder && matchDateFrom && matchDateTo;
   });
 
   return (
     <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">מאגר הזמנות</h1>
-        <Link to="/new-order" className="bg-gray-800 dark:bg-gray-700 text-white px-5 py-2 rounded-lg text-sm hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors">
-          + הזמנה חדשה
-        </Link>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">הזמנות סגורות</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{filtered.length} הזמנות שהושלמו ונשלחו ללקוח</p>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm">
@@ -68,16 +62,6 @@ export default function OrdersList() {
                 className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg pr-9 pl-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none"
               />
             </div>
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
-            >
-              <option value="all">כל הסטטוסים</option>
-              {Object.entries(STATUS_MAP).map(([key, { label }]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
             <select
               value={folderFilter}
               onChange={e => setFolderFilter(e.target.value)}
@@ -101,9 +85,9 @@ export default function OrdersList() {
               <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
                 className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none" />
             </div>
-            {(search || statusFilter !== 'all' || folderFilter !== 'all' || dateFrom || dateTo) && (
+            {(search || folderFilter !== 'all' || dateFrom || dateTo) && (
               <button
-                onClick={() => { setSearch(''); setStatusFilter('all'); setFolderFilter('all'); setDateFrom(''); setDateTo(''); }}
+                onClick={() => { setSearch(''); setFolderFilter('all'); setDateFrom(''); setDateTo(''); }}
                 className="text-xs text-red-400 hover:text-red-600"
               >
                 נקה סינון
@@ -155,55 +139,22 @@ export default function OrdersList() {
                         </a>
                       )}
                       <Link to={`/orders/${order.id}`} className="text-blue-500 hover:underline text-xs">פרטים</Link>
-                      <button
-                        onClick={() => setDeleteTarget(order)}
-                        title="מחק הזמנה"
-                        className="text-red-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-                      >
-                        <Trash2 size={12} />
-                      </button>
                     </div>
                   </td>
                 </tr>
               );
             })}
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="p-8 text-center text-gray-400">לא נמצאו הזמנות</td></tr>
+              <tr>
+                <td colSpan={8} className="p-12 text-center text-gray-400">
+                  <Archive size={40} className="mx-auto mb-3 opacity-50" />
+                  <p>אין הזמנות סגורות</p>
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
       </div>
-
-      {/* Delete Confirmation Modal */}
-      {deleteTarget && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 max-w-sm mx-4">
-            <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">מחיקת הזמנה</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-              האם למחוק את הזמנה <strong>{deleteTarget.orderNumber}</strong>?
-              <br />ההזמנה תועבר לסל המחזור וניתן יהיה לשחזר אותה.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
-                ביטול
-              </button>
-              <button
-                onClick={async () => {
-                  const result = await deleteOrder(deleteTarget.id);
-                  if (result.error) { toast.error(result.error); } else {
-                    toast.success(`הזמנה ${deleteTarget.orderNumber} הועברה לסל המחזור`);
-                    setOrders(prev => prev.filter(o => o.id !== deleteTarget.id));
-                  }
-                  setDeleteTarget(null);
-                }}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-500"
-              >
-                מחק
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
