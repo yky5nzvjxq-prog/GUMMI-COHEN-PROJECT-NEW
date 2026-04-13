@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/user/Desktop/גומי כהן/**)",
+      "Bash(npm install:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(curl -s http://localhost:3001/api/stats)",
+      "Bash(curl -s http://localhost:3001/api/folders)",
+      "Bash(npm run:*)",
+      "Bash(curl -s -o /dev/null -w \"Frontend: %{http_code}\" http://localhost:5173)",
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(curl -s http://localhost:5173/api/stats)",
+      "Bash(curl -s -o /dev/null -w \"  HTTP: %{http_code}\" http://localhost:5173/new-order)",
+      "Bash(curl -s -o /dev/null -w \"  HTTP: %{http_code}\" http://localhost:5173/folders)",
+      "Bash(curl -s -o /dev/null -w \"  HTTP: %{http_code}\" http://localhost:5173/orders)",
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(0,'utf8'\\)\\); console.log\\('Result:', JSON.stringify\\(d\\)\\)\")",
+      "Bash(curl -s http://localhost:3001/api/trash)",
+      "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(0,'utf8'\\)\\); console.log\\('Restored:', d.orderNumber || d.error\\)\")",
+      "Bash(curl -s http://localhost:3001/api/orders)",
+      "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(0,'utf8'\\)\\); console.log\\('Orders count:', d.length\\)\")",
+      "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(0,'utf8'\\)\\); console.log\\('Trash count:', d.length\\)\")",
+      "Bash(curl -s -o /dev/null -w \"Orders page: %{http_code}\\\\n\" http://localhost:5173/orders)",
+      "Bash(curl -s -o /dev/null -w \"Trash page: %{http_code}\\\\n\" http://localhost:5173/trash)"
+    ]
+  }
+}
