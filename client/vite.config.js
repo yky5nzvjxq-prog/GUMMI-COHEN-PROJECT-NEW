@@ -6,9 +6,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:3001',
-      '/uploads': 'http://localhost:3001',
-      '/reports': 'http://localhost:3001',
+      '/api': 'https://gummi-server.onrender.com',
+      '/uploads': 'https://gummi-server.onrender.com,
+      '/reports': 'https://gummi-server.onrender.com',
     }
   }
 });
+
+
