@@ -1,8 +1,10 @@
+const BASE_URL = "https://gummi-server.onrender.com";
+
 const BASE = '/api';
 
 async function request(url, options = {}) {
   try {
-    const res = await fetch(url, options);
+    const res = await fetch(`${BASE_URL}${url}`, options);;
     const data = await res.json();
     if (!res.ok) {
       return { error: data.error || `שגיאה ${res.status}` };
