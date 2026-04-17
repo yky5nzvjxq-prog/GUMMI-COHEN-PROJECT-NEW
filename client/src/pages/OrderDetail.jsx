@@ -699,6 +699,8 @@ export default function OrderDetail() {
                 <>
                   <a
                     href={downloadReportUrl(id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-500 transition-colors"
                   >
                     <Download size={16} />
@@ -733,6 +735,8 @@ export default function OrderDetail() {
                 <>
                   <a
                     href={downloadCOCUrl(id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-500 transition-colors"
                   >
                     <Download size={16} />

@@ -44,12 +44,12 @@ export default function Reports() {
                   <td className="p-3">
                     <div className="flex gap-2 flex-wrap">
                       {order.reportPath && (
-                        <a href={downloadReportUrl(order.id)} className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-green-500 transition-colors">
+                        <a href={downloadReportUrl(order.id)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-green-500 transition-colors">
                           <Download size={14} /> דוח Excel
                         </a>
                       )}
                       {order.cocPath && (
-                        <a href={downloadCOCUrl(order.id)} className="flex items-center gap-1 bg-purple-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-purple-500 transition-colors">
+                        <a href={downloadCOCUrl(order.id)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 bg-purple-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-purple-500 transition-colors">
                           <Award size={14} /> תעודת התאמה (Word)
                         </a>
                       )}
