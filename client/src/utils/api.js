@@ -51,6 +51,15 @@ export async function deleteOrder(id) {
   return request(`${BASE}/orders/${id}`, { method: 'DELETE' });
 }
 
+// Move a list of orders to a destination folder (or null for unfiled) in one call.
+export async function bulkMoveOrders(orderIds, folderId) {
+  return request(`${BASE}/orders/bulk-move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderIds, folderId: folderId || null }),
+  });
+}
+
 export async function deleteOrderFile(orderId, fileType) {
   return request(`${BASE}/orders/${orderId}/file/${fileType}`, { method: 'DELETE' });
 }

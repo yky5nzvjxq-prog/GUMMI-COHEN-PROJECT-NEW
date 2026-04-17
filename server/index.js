@@ -99,17 +99,27 @@ app.get('/api/folders', (req, res) => {
 });
 
 app.post('/api/folders', (req, res) => {
-  const { name, parentId } = req.body;
+  const { name, parentId, color } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'שם תיקייה הוא שדה חובה' });
   }
   if (parentId && !folders.find(f => f.id === parentId)) {
     return res.status(400).json({ error: 'תיקיית אב לא נמצאה' });
   }
+  // Prevent duplicate sibling names under the same parent.
+  const trimmed = name.trim();
+  const duplicate = folders.find(f =>
+    (f.parentId || null) === (parentId || null) &&
+    f.name.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (duplicate) {
+    return res.status(400).json({ error: 'כבר קיימת תיקייה בשם זה תחת אותו אב' });
+  }
   const folder = {
     id: uuidv4(),
-    name: name.trim(),
+    name: trimmed,
     parentId: parentId || null,
+    color: typeof color === 'string' ? color : '',
     createdAt: new Date().toISOString(),
   };
   folders.push(folder);
@@ -121,7 +131,7 @@ app.put('/api/folders/:id', (req, res) => {
   const idx = folders.findIndex(f => f.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'תיקייה לא נמצאה' });
 
-  const { name, parentId } = req.body;
+  const { name, parentId, color } = req.body;
 
   // Validate no circular reference
   if (parentId !== undefined) {
@@ -141,36 +151,88 @@ app.put('/api/folders/:id', (req, res) => {
     folders[idx].parentId = parentId || null;
   }
   if (name !== undefined) {
-    folders[idx].name = name.trim();
+    const trimmed = name.trim();
+    const duplicate = folders.find(f =>
+      f.id !== req.params.id &&
+      (f.parentId || null) === (folders[idx].parentId || null) &&
+      f.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (duplicate) {
+      return res.status(400).json({ error: 'כבר קיימת תיקייה בשם זה תחת אותו אב' });
+    }
+    folders[idx].name = trimmed;
+  }
+  if (color !== undefined) {
+    folders[idx].color = typeof color === 'string' ? color : '';
   }
   saveFolders();
   res.json(folders[idx]);
 });
 
+// Soft-delete a folder: move it to trash (kind='folder') with a snapshot of
+// its orderIds, then clear the folderId on those orders. Sub-folders are
+// re-parented to the deleted folder's parent (they are NOT cascaded into trash).
 app.delete('/api/folders/:id', (req, res) => {
   const idx = folders.findIndex(f => f.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'תיקייה לא נמצאה' });
 
-  const deletedFolder = folders[idx];
+  const deleted = folders[idx];
 
-  // Re-parent children to the deleted folder's parent
+  // Re-parent direct children to grandparent so they don't orphan.
   folders.forEach(f => {
-    if (f.parentId === deletedFolder.id) {
-      f.parentId = deletedFolder.parentId;
+    if (f.parentId === deleted.id) f.parentId = deleted.parentId;
+  });
+
+  // Capture orderIds that were in this folder, then orphan them.
+  const capturedOrderIds = [];
+  orders.forEach(o => {
+    if (o.folderId === deleted.id) {
+      capturedOrderIds.push(o.id);
+      o.folderId = null;
     }
   });
 
-  // Clear folderId on affected orders
-  orders.forEach(o => {
-    if (o.folderId === deletedFolder.id) {
-      o.folderId = null;
-    }
+  // Snapshot into trash.
+  trash.push({
+    kind: 'folder',
+    id: deleted.id,
+    name: deleted.name,
+    parentId: deleted.parentId,
+    color: deleted.color || '',
+    createdAt: deleted.createdAt,
+    orderIds: capturedOrderIds,
+    deletedAt: new Date().toISOString(),
   });
 
   folders.splice(idx, 1);
   saveFolders();
   saveOrders();
+  saveTrash();
   res.json({ success: true });
+});
+
+// Bulk-move orders between folders in a single round-trip.
+// Accepts { orderIds: string[], folderId: string|null }.
+app.post('/api/orders/bulk-move', (req, res) => {
+  const { orderIds, folderId } = req.body || {};
+  if (!Array.isArray(orderIds) || orderIds.length === 0) {
+    return res.status(400).json({ error: 'לא נבחרו הזמנות להעברה' });
+  }
+  if (folderId && !folders.find(f => f.id === folderId)) {
+    return res.status(400).json({ error: 'תיקיית יעד לא נמצאה' });
+  }
+  const targetId = folderId || null;
+  const updated = [];
+  const now = new Date().toISOString();
+  for (const orderId of orderIds) {
+    const o = orders.find(x => x.id === orderId);
+    if (!o) continue;
+    o.folderId = targetId;
+    o.updatedAt = now;
+    updated.push(o.id);
+  }
+  saveOrders();
+  res.json({ moved: updated.length, ids: updated, folderId: targetId });
 });
 
 // ─── ORDERS API ──────────────────────────────────────────────────────
@@ -302,6 +364,7 @@ app.delete('/api/orders/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
 
   const order = orders.splice(idx, 1)[0];
+  order.kind = 'order';
   order.deletedAt = new Date().toISOString();
   trash.push(order);
   saveOrders();
@@ -350,13 +413,67 @@ app.get('/api/trash', (req, res) => {
   res.json([...trash].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt)));
 });
 
-// RESTORE order from trash
+// Physical-file cleanup for a trashed order entry.
+function purgeOrderFiles(order) {
+  const paths = [];
+  if (order.files?.drawing?.serverPath) paths.push(order.files.drawing.serverPath);
+  if (order.files?.customerOrder?.serverPath) paths.push(order.files.customerOrder.serverPath);
+  if (order.files?.qualityDocs) order.files.qualityDocs.forEach(f => f?.serverPath && paths.push(f.serverPath));
+  if (order.reportPath) paths.push(order.reportPath);
+  if (order.cocPath) paths.push(order.cocPath);
+  for (const p of paths) {
+    const full = path.join(__dirname, p.replace(/^\//, ''));
+    try { if (fs.existsSync(full)) fs.unlinkSync(full); } catch (e) { /* ignore */ }
+  }
+}
+
+// RESTORE from trash — works for both orders and folders.
+// Dispatch on the item's `kind` field. Legacy items (no kind) are orders.
 app.post('/api/trash/:id/restore', (req, res) => {
   const idx = trash.findIndex(o => o.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'פריט לא נמצא בסל המחזור' });
 
+  const item = trash[idx];
+  const kind = item.kind || 'order';
+
+  if (kind === 'folder') {
+    // Ensure no live folder with the same id already exists (edge case).
+    if (folders.find(f => f.id === item.id)) {
+      trash.splice(idx, 1);
+      saveTrash();
+      return res.status(400).json({ error: 'תיקייה פעילה עם מזהה זה כבר קיימת' });
+    }
+    // If the original parent no longer exists, drop to root so the folder is reachable.
+    const parentExists = !item.parentId || !!folders.find(f => f.id === item.parentId);
+    const folder = {
+      id: item.id,
+      name: item.name,
+      parentId: parentExists ? (item.parentId || null) : null,
+      color: item.color || '',
+      createdAt: item.createdAt || new Date().toISOString(),
+    };
+    folders.push(folder);
+    // Re-link orders that still have no folder (user may have moved them manually in the meantime; only re-link the ones still unfiled).
+    const relinked = [];
+    for (const orderId of item.orderIds || []) {
+      const o = orders.find(x => x.id === orderId);
+      if (o && !o.folderId) {
+        o.folderId = folder.id;
+        o.updatedAt = new Date().toISOString();
+        relinked.push(orderId);
+      }
+    }
+    trash.splice(idx, 1);
+    saveFolders();
+    saveOrders();
+    saveTrash();
+    return res.json({ kind: 'folder', folder, relinked: relinked.length });
+  }
+
+  // Order restore (legacy path).
   const order = trash.splice(idx, 1)[0];
   delete order.deletedAt;
+  delete order.kind;
   order.updatedAt = new Date().toISOString();
   orders.push(order);
   saveOrders();
@@ -364,58 +481,29 @@ app.post('/api/trash/:id/restore', (req, res) => {
   res.json(order);
 });
 
-// PERMANENT DELETE from trash
+// PERMANENT DELETE from trash — works for both orders and folders.
 app.delete('/api/trash/:id', (req, res) => {
   const idx = trash.findIndex(o => o.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'פריט לא נמצא בסל המחזור' });
 
-  const order = trash[idx];
+  const item = trash[idx];
+  const kind = item.kind || 'order';
 
-  // Clean up all physical files
-  const filesToDelete = [];
-  if (order.files?.drawing?.serverPath) filesToDelete.push(order.files.drawing.serverPath);
-  if (order.files?.customerOrder?.serverPath) filesToDelete.push(order.files.customerOrder.serverPath);
-  if (order.files?.qualityDocs) {
-    order.files.qualityDocs.forEach(f => filesToDelete.push(f.serverPath));
+  if (kind === 'order') {
+    purgeOrderFiles(item);
   }
-  filesToDelete.forEach(fp => {
-    const fullPath = path.join(__dirname, fp.replace(/^\//, ''));
-    try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch (e) { /* ignore */ }
-  });
-  if (order.reportPath) {
-    const rp = path.join(__dirname, order.reportPath.replace(/^\//, ''));
-    try { if (fs.existsSync(rp)) fs.unlinkSync(rp); } catch (e) { /* ignore */ }
-  }
-  if (order.cocPath) {
-    const cp = path.join(__dirname, order.cocPath.replace(/^\//, ''));
-    try { if (fs.existsSync(cp)) fs.unlinkSync(cp); } catch (e) { /* ignore */ }
-  }
+  // Folders in trash have no physical files of their own; orphaned orders
+  // were detached at delete-time so their files remain with the orders.
 
   trash.splice(idx, 1);
   saveTrash();
   res.json({ success: true });
 });
 
-// EMPTY entire trash
+// EMPTY entire trash (both kinds).
 app.delete('/api/trash', (req, res) => {
-  // Delete all physical files for trashed orders
-  for (const order of trash) {
-    const filesToDelete = [];
-    if (order.files?.drawing?.serverPath) filesToDelete.push(order.files.drawing.serverPath);
-    if (order.files?.customerOrder?.serverPath) filesToDelete.push(order.files.customerOrder.serverPath);
-    if (order.files?.qualityDocs) order.files.qualityDocs.forEach(f => filesToDelete.push(f.serverPath));
-    filesToDelete.forEach(fp => {
-      const fullPath = path.join(__dirname, fp.replace(/^\//, ''));
-      try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch (e) { /* ignore */ }
-    });
-    if (order.reportPath) {
-      const rp = path.join(__dirname, order.reportPath.replace(/^\//, ''));
-      try { if (fs.existsSync(rp)) fs.unlinkSync(rp); } catch (e) { /* ignore */ }
-    }
-    if (order.cocPath) {
-      const cp = path.join(__dirname, order.cocPath.replace(/^\//, ''));
-      try { if (fs.existsSync(cp)) fs.unlinkSync(cp); } catch (e) { /* ignore */ }
-    }
+  for (const item of trash) {
+    if ((item.kind || 'order') === 'order') purgeOrderFiles(item);
   }
   trash.length = 0;
   saveTrash();
