@@ -5,7 +5,7 @@ import {
   uploadDrawing, uploadCustomerOrder, uploadQualityDocs, removeQualityDoc,
   generateReport, generateCOC,
   downloadReportUrl, downloadCOCUrl,
-  extractDocumentData,
+  extractDocumentData, extractAllForOrder,
 } from '../utils/api';
 import { statusBadge, formatDate } from '../utils/helpers';
 import { useToast } from '../components/Toast';
@@ -150,6 +150,67 @@ export default function OrderDetail() {
     }
   }
 
+  // ─── Multi-file merge: scan ALL attached files and merge results ───
+  // `mode` controls what gets populated: 'all' | 'dimensions' | 'material'.
+  async function runAllFilesExtraction(mode = 'all') {
+    setExtracting(true);
+    setExtractionSource('כל הקבצים');
+    const result = await extractAllForOrder(id);
+    setExtracting(false);
+    setExtractionSource('');
+
+    if (result.error) { toast.error(result.error); return; }
+
+    if (result.warnings) result.warnings.forEach(w => toast.info(w));
+
+    let dimsApplied = 0;
+    let matApplied = 0;
+
+    if ((mode === 'all' || mode === 'dimensions') && Array.isArray(result.dimensions) && result.dimensions.length > 0) {
+      setDims(result.dimensions);
+      setAutoFilledDims(true);
+      dimsApplied = result.dimensions.length;
+    }
+
+    if ((mode === 'all' || mode === 'material') && result.rawMaterial?.extracted) {
+      const { extracted, confidence, sources } = result.rawMaterial;
+      const newRawMat = { ...rawMat };
+      const newAutoFilled = { ...autoFilledRawMat };
+      for (const [field, value] of Object.entries(extracted)) {
+        if (!value) continue;
+        newRawMat[field] = value;
+        newAutoFilled[field] = confidence?.[field] || 'low';
+        matApplied++;
+      }
+      setRawMat(newRawMat);
+      setAutoFilledRawMat(newAutoFilled);
+
+      // Surface conflicts from the merge as UI conflict alerts.
+      const merged = {};
+      const conflicts = result.conflicts || {};
+      for (const [field, list] of Object.entries(conflicts)) {
+        const acceptedValue = extracted[field];
+        const loser = list.find(c => c.value !== acceptedValue);
+        if (loser) {
+          merged[field] = {
+            current: acceptedValue,
+            suggested: loser.value,
+            source: loser.source,
+            confidence: loser.confidence,
+          };
+        }
+      }
+      if (Object.keys(merged).length > 0) setRawMatConflicts(prev => ({ ...prev, ...merged }));
+    }
+
+    const fileSummary = (result.perFile || []).map(f => `${f.source}: ${f.dimensionsFound} מידות`).join(' · ');
+    if (dimsApplied || matApplied) {
+      toast.success(`סריקה הושלמה — ${dimsApplied} מידות, ${matApplied} שדות חומר גלם${fileSummary ? ` (${fileSummary})` : ''}`);
+    } else {
+      toast.info('לא נמצאו נתונים חדשים בקבצים שהועלו');
+    }
+  }
+
   // ─── File Uploads ────────────────────────────────────────────────
   async function handleUploadDrawing(e) {
     const file = e.target.files[0];
@@ -192,6 +253,10 @@ export default function OrderDetail() {
     if (result.error) { toast.error(result.error); return; }
     setOrder(result);
     toast.success(`${files.length} מסמכי איכות הועלו בהצלחה`);
+
+    // Auto-scan all files (drawing + customer order + quality docs) to catch
+    // any new material specs or dimensions that the quality docs reveal.
+    await runAllFilesExtraction('all');
   }
 
   async function handleRemoveQualityDoc(idx) {
@@ -232,7 +297,7 @@ export default function OrderDetail() {
   }
 
   function addDim() {
-    setDims(prev => [...prev, { symbol: '', nominal: '', tolerance: '', min: '', max: '', remarks: '', flaggedForReview: false }]);
+    setDims(prev => [...prev, { symbol: '', nominal: '', tolerance: '', min: '', max: '', unit: 'mm', critical: false, remarks: '', flaggedForReview: false }]);
   }
 
   function removeDim(idx) {
@@ -319,6 +384,8 @@ export default function OrderDetail() {
   const FIELD_LABELS = {
     materialType: 'סוג חומר',
     description: 'תיאור חומר',
+    specification: 'מספר מפרט',
+    standard: 'תקן (ISO/ASTM)',
     supplier: 'ספק',
     batchNumber: "מס' אצווה",
     certNumber: "מס' תעודה",
@@ -475,9 +542,18 @@ export default function OrderDetail() {
               )}
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={() => runAllFilesExtraction('dimensions')}
+                disabled={extracting || (!files.drawing && !files.customerOrder && (files.qualityDocs || []).length === 0)}
+                className="text-sm bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50"
+                title="סרוק את השרטוט, הזמנת הלקוח ומסמכי האיכות וחלץ מידות"
+              >
+                {extracting ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                {extracting ? 'סורק...' : 'סרוק קבצים וחלץ מידות'}
+              </button>
               {dims.length > 0 && files.drawing && (
                 <button onClick={clearDimsForReExtract} className="text-sm text-orange-500 hover:text-orange-600 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
-                  <Zap size={14} /> חלץ מחדש
+                  <Zap size={14} /> חלץ מחדש משרטוט
                 </button>
               )}
               <button onClick={addDim} className="text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-300 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
@@ -504,27 +580,53 @@ export default function OrderDetail() {
                     <th className="p-2 text-right">סוג מידה / סימול</th>
                     <th className="p-2 text-right">מידה נומינלית</th>
                     <th className="p-2 text-right">טולרנס</th>
+                    <th className="p-2 text-right w-20">יחידה</th>
                     <th className="p-2 text-right">מינימום</th>
                     <th className="p-2 text-right">מקסימום</th>
+                    <th className="p-2 text-center w-16">קריטי</th>
                     <th className="p-2 text-right">הערות</th>
                     <th className="p-2 w-10"></th>
                   </tr>
                 </thead>
                 <tbody className="dark:text-gray-300">
                   {dims.map((dim, idx) => (
-                    <tr key={idx} className={`${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-750'} ${dim.flaggedForReview ? 'ring-1 ring-yellow-400' : ''}`}>
+                    <tr key={idx} className={`${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-750'} ${dim.flaggedForReview ? 'ring-1 ring-yellow-400' : ''} ${dim.critical ? 'ring-2 ring-red-400' : ''} ${dim.uncertain ? 'ring-2 ring-orange-400' : ''}`}>
                       <td className="p-2 text-gray-400">{idx + 1}</td>
-                      {['symbol', 'nominal', 'tolerance', 'min', 'max', 'remarks'].map(field => (
-                        <td key={field} className="p-1">
-                          <input
-                            type={['nominal', 'min', 'max'].includes(field) ? 'number' : 'text'}
-                            step="any"
-                            value={dim[field] ?? ''}
-                            onChange={e => updateDim(idx, field, e.target.value)}
-                            className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-blue-400 outline-none"
-                          />
-                        </td>
-                      ))}
+                      <td className="p-1">
+                        <input type="text" value={dim.symbol ?? ''} onChange={e => updateDim(idx, 'symbol', e.target.value)}
+                          className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-blue-400 outline-none" />
+                      </td>
+                      <td className="p-1">
+                        <input type="number" step="any" value={dim.nominal ?? ''} onChange={e => updateDim(idx, 'nominal', e.target.value)}
+                          className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-blue-400 outline-none" />
+                      </td>
+                      <td className="p-1">
+                        <input type="text" value={dim.tolerance ?? ''} onChange={e => updateDim(idx, 'tolerance', e.target.value)}
+                          className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-blue-400 outline-none" />
+                      </td>
+                      <td className="p-1">
+                        <select value={dim.unit || 'mm'} onChange={e => updateDim(idx, 'unit', e.target.value)}
+                          className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-blue-400 outline-none">
+                          <option value="mm">mm</option>
+                          <option value="inch">inch</option>
+                        </select>
+                      </td>
+                      <td className="p-1">
+                        <input type="number" step="any" value={dim.min ?? ''} onChange={e => updateDim(idx, 'min', e.target.value)}
+                          className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-blue-400 outline-none" />
+                      </td>
+                      <td className="p-1">
+                        <input type="number" step="any" value={dim.max ?? ''} onChange={e => updateDim(idx, 'max', e.target.value)}
+                          className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-blue-400 outline-none" />
+                      </td>
+                      <td className="p-1 text-center">
+                        <input type="checkbox" checked={!!dim.critical} onChange={e => updateDim(idx, 'critical', e.target.checked)}
+                          className="w-4 h-4 accent-red-500 cursor-pointer" />
+                      </td>
+                      <td className="p-1">
+                        <input type="text" value={dim.remarks ?? ''} onChange={e => updateDim(idx, 'remarks', e.target.value)}
+                          className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-blue-400 outline-none" />
+                      </td>
                       <td className="p-1">
                         <button onClick={() => removeDim(idx)} className="text-red-400 hover:text-red-600 text-xs px-2">
                           <XIcon size={14} />
@@ -543,6 +645,18 @@ export default function OrderDetail() {
               <span>שורות מסומנות בצהוב חולצו אוטומטית ודורשות אימות ידני — נא לבדוק את הנתונים</span>
             </div>
           )}
+          {dims.some(d => d.uncertain) && (
+            <div className="mt-2 flex items-center gap-2 text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/30 px-4 py-2 rounded-lg text-sm">
+              <Info size={16} />
+              <span>שורות מסומנות בכתום — נמצא טולרנס שונה ביותר מקובץ אחד. נא להחליט איזה ערך לשמור.</span>
+            </div>
+          )}
+          {dims.some(d => d.critical) && (
+            <div className="mt-2 flex items-center gap-2 text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 px-4 py-2 rounded-lg text-sm">
+              <AlertTriangle size={16} />
+              <span>שורות מסומנות באדום הוגדרו כמידות קריטיות — יקבלו דגש בדוח הבדיקה ובתעודת ההתאמה.</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -558,13 +672,24 @@ export default function OrderDetail() {
                 </span>
               )}
             </div>
-            <button onClick={handleSave} className="text-sm bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
-              <Save size={14} /> שמור
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => runAllFilesExtraction('material')}
+                disabled={extracting || (!files.drawing && !files.customerOrder && (files.qualityDocs || []).length === 0)}
+                className="text-sm bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50"
+                title="סרוק את השרטוט, הזמנת הלקוח ומסמכי האיכות וחלץ נתוני חומר גלם"
+              >
+                {extracting ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                {extracting ? 'סורק...' : 'סרוק קבצים וחלץ חומר גלם'}
+              </button>
+              <button onClick={handleSave} className="text-sm bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                <Save size={14} /> שמור
+              </button>
+            </div>
           </div>
 
           <p className="text-xs text-gray-400 mb-4">
-            שדות חומר גלם ימולאו אוטומטית מהשרטוט או מהזמנת הלקוח (אם קיימים). ניתן לערוך כל שדה.
+            שדות חומר גלם ימולאו אוטומטית מהשרטוט, הזמנת הלקוח ומסמכי האיכות. ערכים שנמצאו ביותר מקובץ אחד עם ערך שונה — יסומנו כהתנגשויות לבחירה.
           </p>
 
           {/* Conflict alerts */}
@@ -591,6 +716,8 @@ export default function OrderDetail() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
               { key: 'materialType', label: 'סוג חומר', placeholder: 'לדוגמה: NBR, EPDM, Silicone' },
+              { key: 'specification', label: 'מספר מפרט', placeholder: 'Compound #, MIL-R-…' },
+              { key: 'standard', label: 'תקן (ISO / ASTM / DIN)', placeholder: 'ISO 3601, ASTM D2000…' },
               { key: 'description', label: 'תיאור חומר', placeholder: 'תיאור מלא' },
               { key: 'supplier', label: 'ספק', placeholder: 'שם הספק' },
               { key: 'batchNumber', label: "מס' אצווה", placeholder: '' },
@@ -605,10 +732,12 @@ export default function OrderDetail() {
                     <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full mr-1 ${
                       autoFilledRawMat[key] === 'high'
                         ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'
-                        : 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400'
+                        : autoFilledRawMat[key] === 'uncertain'
+                          ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
+                          : 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400'
                     }`}>
                       <Zap size={9} />
-                      {autoFilledRawMat[key] === 'high' ? 'חולץ' : 'דורש בדיקה'}
+                      {autoFilledRawMat[key] === 'high' ? 'חולץ' : autoFilledRawMat[key] === 'uncertain' ? 'התנגשות' : 'דורש בדיקה'}
                     </span>
                   )}
                 </label>

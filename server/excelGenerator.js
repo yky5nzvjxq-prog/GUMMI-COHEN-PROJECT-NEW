@@ -172,8 +172,8 @@ function buildDimensionsSheet(workbook, order, settings) {
   addSectionHeader(sheet, row, 'טבלת מידות', 'G');
 
   row++;
-  const colHeaders = ['#', 'סוג מידה / סימול', 'מידה נומינלית', 'טולרנס', 'מינימום', 'מקסימום', 'הערות'];
-  const colKeys = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+  const colHeaders = ['#', 'סוג מידה / סימול', 'מידה נומינלית', 'טולרנס', 'יחידה', 'מינימום', 'מקסימום', 'קריטי', 'הערות'];
+  const colKeys = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 
   colKeys.forEach((col, i) => {
     const cell = sheet.getCell(`${col}${row}`);
@@ -194,8 +194,9 @@ function buildDimensionsSheet(workbook, order, settings) {
     const nom = parseFloat(dim.nominal);
     const tol = parseFloat(String(dim.tolerance || '').replace(/[±]/g, ''));
     const hasCalc = !isNaN(nom) && !isNaN(tol);
-    const values = [idx + 1, dim.symbol, dim.nominal, dim.tolerance,
-      hasCalc ? (nom - tol) : (dim.min || ''), hasCalc ? (nom + tol) : (dim.max || ''), dim.remarks || ''];
+    const values = [idx + 1, dim.symbol, dim.nominal, dim.tolerance, dim.unit || 'mm',
+      hasCalc ? (nom - tol) : (dim.min || ''), hasCalc ? (nom + tol) : (dim.max || ''),
+      dim.critical ? '✓' : '', dim.remarks || ''];
 
     colKeys.forEach((col, i) => {
       const cell = sheet.getCell(`${col}${row}`);
@@ -206,8 +207,10 @@ function buildDimensionsSheet(workbook, order, settings) {
         align: { horizontal: 'center', vertical: 'middle' },
       });
 
-      // Highlight flagged dimensions
-      if (dim.flaggedForReview) {
+      // Critical rows override the flagged-for-review fill.
+      if (dim.critical) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+      } else if (dim.flaggedForReview) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.warningBg } };
       }
     });
@@ -391,6 +394,8 @@ function buildRawMaterialSheet(workbook, order, settings) {
   const rm = order.rawMaterial || {};
   const matFields = [
     ['סוג חומר', rm.materialType],
+    ['מספר מפרט', rm.specification],
+    ['תקן (ISO/ASTM)', rm.standard],
     ['תיאור חומר', rm.description],
     ['ספק', rm.supplier],
     ["מס' אצווה", rm.batchNumber],

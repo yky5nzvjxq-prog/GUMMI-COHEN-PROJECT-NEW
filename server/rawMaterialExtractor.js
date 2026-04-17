@@ -152,6 +152,47 @@ const RAW_MATERIAL_EXTRACTORS = [
     },
   },
   {
+    field: 'specification',
+    extract(text) {
+      const patterns = [
+        /(?:מפרט\s*(?:מס['׳]?)?\s*[:\-]\s*)([A-Za-z0-9][\w\-\/\.\s]{1,40})/i,
+        /(?:Spec(?:ification)?\s*(?:No\.?|#|Number)?\s*[:\-]\s*)([A-Za-z0-9][\w\-\/\.\s]{1,40})/i,
+        /(?:Compound\s*(?:No\.?|#|Number|Code)\s*[:\-]?\s*)([A-Za-z0-9][\w\-\/\.]{1,30})/i,
+        /\b(MIL-[A-Z]-\d{3,6}[A-Z]?)\b/i,
+      ];
+      for (const p of patterns) {
+        const m = text.match(p);
+        if (m && m[1]) {
+          const val = m[1].replace(/[\r\n].*/s, '').trim();
+          if (val.length >= 2) return { value: val, confidence: 'high' };
+        }
+      }
+      return null;
+    },
+  },
+  {
+    field: 'standard',
+    extract(text) {
+      const patterns = [
+        /\b(ISO\s*\d{3,5}(?:[\-:]\d+)?(?:\s*[A-Z])?)\b/i,
+        /\b(ASTM\s*[A-Z]\s*\d{2,4}[A-Z]?(?:\s*\-\s*\d+)?)\b/i,
+        /\b(DIN\s*(?:EN\s*)?(?:ISO\s*)?\d{2,5}(?:\-\d+)?)\b/i,
+        /\b(EN\s*\d{3,5}(?:[\-:]\d+)?)\b/i,
+        /\b(JIS\s*[A-Z]\s*\d{3,5})\b/i,
+        /(?:תקן\s*[:\-]\s*)([A-Za-z0-9][\w\-\/\.\s]{1,40})/i,
+        /(?:Standard\s*[:\-]\s*)([A-Za-z0-9][\w\-\/\.\s]{1,40})/i,
+      ];
+      for (const p of patterns) {
+        const m = text.match(p);
+        if (m && m[1]) {
+          const val = m[1].replace(/[\r\n].*/s, '').trim();
+          if (val.length >= 2) return { value: val, confidence: 'high' };
+        }
+      }
+      return null;
+    },
+  },
+  {
     field: 'color',
     extract(text) {
       const patterns = [

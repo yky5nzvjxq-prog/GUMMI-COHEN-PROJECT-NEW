@@ -7,7 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const { generateExcelReport } = require('./excelGenerator');
 const { generateCOCDocx } = require('./docxGenerator');
 const { extractOrderData } = require('./orderExtractor');
-const { extractDocumentDataFull } = require('./extractionPipeline');
+const { extractDocumentDataFull, extractAllForOrder } = require('./extractionPipeline');
 const { initOCR, terminateOCR } = require('./ocrEngine');
 
 const app = express();
@@ -470,6 +470,24 @@ app.post('/api/extract-document-data', async (req, res) => {
       error: 'שגיאה בחילוץ נתונים: ' + err.message,
       warnings: [],
     });
+  }
+});
+
+// Run extraction across every file attached to an order and return merged results.
+// Does NOT persist — the frontend decides what to apply.
+app.post('/api/orders/:id/extract-all', async (req, res) => {
+  const order = orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+
+  try {
+    req.setTimeout(180000); // up to 3 min: multi-file OCR can be slow
+    const started = Date.now();
+    const result = await extractAllForOrder(order);
+    console.log(`[extract-all] order=${order.id} files=${result.perFile.length} dims=${result.dimensions.length} conflicts=${Object.keys(result.conflicts).length} took=${Date.now() - started}ms`);
+    res.json(result);
+  } catch (err) {
+    console.error('[extract-all] error:', err);
+    res.status(500).json({ error: 'שגיאה בחילוץ מרוכז: ' + err.message });
   }
 });
 

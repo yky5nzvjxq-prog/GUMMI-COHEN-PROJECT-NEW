@@ -206,4 +206,143 @@ function makeResult({
   };
 }
 
-module.exports = { extractDocumentDataFull };
+/**
+ * Extract data from every file attached to an order and merge intelligently.
+ *
+ * Inputs: an order object with { files: { drawing, customerOrder, qualityDocs[] } }.
+ * Output: { dimensions, rawMaterial, conflicts, perFile, warnings }.
+ *
+ * Merge rules:
+ *  - Dimensions: dedup by (symbol, nominal). Drawings are authoritative;
+ *    same dimension from multiple files merges `sources`. Conflicting tolerances
+ *    on the same (symbol, nominal) are marked uncertain.
+ *  - Raw material: each field takes the first confident value seen in source
+ *    priority order (drawing → customerOrder → qualityDocs). If a later file
+ *    reports a *different* value for a field, a conflict entry is added.
+ */
+async function extractAllForOrder(order) {
+  const files = collectOrderFiles(order);
+  const perFile = [];
+  const warnings = [];
+
+  for (const f of files) {
+    const result = await extractDocumentDataFull(f.serverPath);
+    perFile.push({ ...f, result });
+    if (result.warnings) warnings.push(...result.warnings.map(w => `[${f.source}] ${w}`));
+    if (result.error) warnings.push(`[${f.source}] ${result.error}`);
+  }
+
+  const mergedDimensions = mergeDimensions(perFile);
+  const { merged: mergedMaterial, conflicts } = mergeRawMaterial(perFile);
+
+  return {
+    dimensions: mergedDimensions,
+    rawMaterial: mergedMaterial,
+    conflicts,
+    perFile: perFile.map(f => ({
+      source: f.source,
+      fileName: f.fileName,
+      dimensionsFound: f.result.dimensions?.length || 0,
+      materialFields: Object.keys(f.result.rawMaterial?.extracted || {}),
+      ocrUsed: f.result.ocrUsed,
+      error: f.result.error || null,
+    })),
+    warnings,
+  };
+}
+
+// Build a prioritized list of files to scan.
+// Drawings are listed first so their dimensions take precedence in dedup.
+function collectOrderFiles(order) {
+  const out = [];
+  const files = order.files || {};
+  if (files.drawing?.serverPath) {
+    out.push({ source: 'drawing', fileName: files.drawing.originalName, serverPath: files.drawing.serverPath });
+  }
+  if (files.customerOrder?.serverPath) {
+    out.push({ source: 'customerOrder', fileName: files.customerOrder.originalName, serverPath: files.customerOrder.serverPath });
+  }
+  for (const [i, qd] of (files.qualityDocs || []).entries()) {
+    if (qd?.serverPath) {
+      out.push({ source: `qualityDoc#${i + 1}`, fileName: qd.originalName, serverPath: qd.serverPath });
+    }
+  }
+  return out;
+}
+
+function mergeDimensions(perFile) {
+  const byKey = new Map();
+  for (const f of perFile) {
+    const dims = f.result.dimensions || [];
+    for (const d of dims) {
+      const key = `${(d.symbol || '').trim().toUpperCase()}|${String(d.nominal || '').trim()}`;
+      if (!byKey.has(key)) {
+        byKey.set(key, { ...d, sources: [f.source] });
+        continue;
+      }
+      const existing = byKey.get(key);
+      if (!existing.sources.includes(f.source)) existing.sources.push(f.source);
+      // If tolerances differ, flag uncertain.
+      if (d.tolerance && existing.tolerance && d.tolerance !== existing.tolerance) {
+        existing.uncertain = true;
+        existing.remarks = (existing.remarks ? existing.remarks + ' · ' : '') +
+          `טולרנס שונה ב${f.source}: ${d.tolerance}`;
+      }
+      // Promote critical if any source says so.
+      if (d.critical) existing.critical = true;
+      // Prefer a non-empty unit if existing was blank.
+      if (!existing.unit && d.unit) existing.unit = d.unit;
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+function mergeRawMaterial(perFile) {
+  // Source priority: drawing > customerOrder > qualityDoc#N
+  const priority = { drawing: 3, customerOrder: 2 };
+  const priorityOf = src => priority[src] ?? 1;
+
+  const accepted = {}; // field → { value, confidence, source }
+  const conflicts = {}; // field → [{ value, confidence, source }]
+
+  for (const f of perFile) {
+    const rm = f.result.rawMaterial || { extracted: {}, confidence: {} };
+    for (const [field, value] of Object.entries(rm.extracted)) {
+      if (!value) continue;
+      const conf = rm.confidence?.[field] || 'low';
+      const entry = { value: String(value).trim(), confidence: conf, source: f.source };
+      const prev = accepted[field];
+
+      if (!prev) {
+        accepted[field] = entry;
+        continue;
+      }
+      if (prev.value === entry.value) continue; // agreement — skip
+
+      // Conflict. Keep the higher-priority/confidence one as accepted,
+      // record the loser in conflicts.
+      const prevScore = priorityOf(prev.source) + (prev.confidence === 'high' ? 0.5 : 0);
+      const newScore = priorityOf(entry.source) + (entry.confidence === 'high' ? 0.5 : 0);
+      let winner = prev, loser = entry;
+      if (newScore > prevScore) { winner = entry; loser = prev; }
+      accepted[field] = winner;
+      if (!conflicts[field]) conflicts[field] = [];
+      if (!conflicts[field].some(c => c.value === loser.value && c.source === loser.source)) {
+        conflicts[field].push(loser);
+      }
+      if (!conflicts[field].some(c => c.value === winner.value && c.source === winner.source)) {
+        conflicts[field].push(winner);
+      }
+    }
+  }
+
+  const merged = { extracted: {}, confidence: {}, sources: {} };
+  for (const [field, entry] of Object.entries(accepted)) {
+    merged.extracted[field] = entry.value;
+    merged.confidence[field] = conflicts[field] ? 'uncertain' : entry.confidence;
+    merged.sources[field] = entry.source;
+  }
+  return { merged, conflicts };
+}
+
+module.exports = { extractDocumentDataFull, extractAllForOrder };
