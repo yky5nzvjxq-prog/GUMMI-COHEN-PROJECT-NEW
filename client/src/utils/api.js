@@ -1,4 +1,4 @@
-const BASE_URL = "https://gummi-server.onrender.com";
+export const BASE_URL = "https://gummi-server.onrender.com";
 
 const BASE = '/api';
 
@@ -150,11 +150,39 @@ export async function generateCOC(orderId) {
 }
 
 export function downloadReportUrl(orderId) {
-  return `${BASE}/orders/${orderId}/download`;
+  const url = `${BASE_URL}${BASE}/orders/${orderId}/download`;
+  console.log('[downloadReportUrl]', url);
+  return url;
 }
 
 export function downloadCOCUrl(orderId) {
-  return `${BASE}/orders/${orderId}/download-coc`;
+  const url = `${BASE_URL}${BASE}/orders/${orderId}/download-coc`;
+  console.log('[downloadCOCUrl]', url);
+  return url;
+}
+
+// Verify a report/coc file exists on the server before opening it.
+// Returns true if HEAD succeeds, false otherwise.
+async function headOk(url) {
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Open a generated file in a new tab, but only after confirming it exists.
+// `kind` is 'report' or 'coc' — used purely for the error message.
+export async function openGeneratedFile(orderId, kind = 'report') {
+  const url = kind === 'coc' ? downloadCOCUrl(orderId) : downloadReportUrl(orderId);
+  console.log('[open]', kind, url);
+  const ok = await headOk(url);
+  if (!ok) {
+    return { error: 'הקובץ לא נמצא בשרת — נסה ליצור את הדוח מחדש' };
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+  return { ok: true };
 }
 
 // ─── Settings ────────────────────────────────────────────────────────

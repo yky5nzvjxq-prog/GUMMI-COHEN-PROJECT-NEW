@@ -545,6 +545,10 @@ app.delete('/api/orders/:id/upload/quality-docs/:docIndex', (req, res) => {
 
 // ─── REPORT GENERATION ───────────────────────────────────────────────
 
+function publicBaseUrl(req) {
+  return process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+}
+
 // Generate Excel report (dimensions + raw material sheets)
 app.post('/api/orders/:id/report', async (req, res) => {
   const order = orders.find(o => o.id === req.params.id);
@@ -555,15 +559,27 @@ app.post('/api/orders/:id/report', async (req, res) => {
 
   try {
     const reportFileName = `report_${order.orderNumber.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.xlsx`;
-    const reportPath = path.join(__dirname, 'reports', reportFileName);
-    await generateExcelReport(order, reportPath, settings);
+    const reportAbsPath = path.join(__dirname, 'reports', reportFileName);
+    await generateExcelReport(order, reportAbsPath, settings);
+
+    if (!fs.existsSync(reportAbsPath)) {
+      throw new Error(`קובץ הדוח לא נכתב לדיסק: ${reportAbsPath}`);
+    }
+    const stat = fs.statSync(reportAbsPath);
+    if (stat.size === 0) {
+      throw new Error(`קובץ הדוח ריק: ${reportAbsPath}`);
+    }
+
     order.reportPath = `/reports/${reportFileName}`;
     order.status = 'report_generated';
     order.updatedAt = new Date().toISOString();
     saveOrders();
-    res.json(order);
+
+    const downloadUrl = `${publicBaseUrl(req)}/api/orders/${order.id}/download`;
+    console.log(`[report] generated order=${order.id} file=${reportAbsPath} size=${stat.size}b url=${downloadUrl}`);
+    res.json({ ...order, downloadUrl });
   } catch (err) {
-    console.error('Report generation error:', err);
+    console.error('[report] generation error:', err);
     res.status(500).json({ error: 'שגיאה ביצירת הדוח: ' + err.message });
   }
 });
@@ -575,35 +591,60 @@ app.post('/api/orders/:id/coc', async (req, res) => {
 
   try {
     const cocFileName = `coc_${order.orderNumber.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.docx`;
-    const cocPath = path.join(__dirname, 'reports', cocFileName);
-    await generateCOCDocx(order, cocPath, settings);
+    const cocAbsPath = path.join(__dirname, 'reports', cocFileName);
+    await generateCOCDocx(order, cocAbsPath, settings);
+
+    if (!fs.existsSync(cocAbsPath)) {
+      throw new Error(`קובץ תעודת התאמה לא נכתב לדיסק: ${cocAbsPath}`);
+    }
+    const stat = fs.statSync(cocAbsPath);
+    if (stat.size === 0) {
+      throw new Error(`קובץ תעודת התאמה ריק: ${cocAbsPath}`);
+    }
+
     order.cocPath = `/reports/${cocFileName}`;
     order.updatedAt = new Date().toISOString();
     saveOrders();
-    res.json(order);
+
+    const downloadUrl = `${publicBaseUrl(req)}/api/orders/${order.id}/download-coc`;
+    console.log(`[coc] generated order=${order.id} file=${cocAbsPath} size=${stat.size}b url=${downloadUrl}`);
+    res.json({ ...order, downloadUrl });
   } catch (err) {
-    console.error('C.O.C. generation error:', err);
+    console.error('[coc] generation error:', err);
     res.status(500).json({ error: 'שגיאה ביצירת תעודת התאמה: ' + err.message });
   }
 });
 
-// DOWNLOAD report
-app.get('/api/orders/:id/download', (req, res) => {
+// Serve a generated file for a given order + kind. Used for both GET and HEAD.
+function serveGeneratedFile(kind, req, res) {
   const order = orders.find(o => o.id === req.params.id);
-  if (!order || !order.reportPath) return res.status(404).json({ error: 'דוח לא נמצא' });
-  const filePath = path.join(__dirname, order.reportPath.replace(/^\//, ''));
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'קובץ דוח לא נמצא' });
-  res.download(filePath);
-});
+  const storedPath = kind === 'coc' ? order?.cocPath : order?.reportPath;
+  const notFoundMsg = kind === 'coc' ? 'תעודת התאמה לא נמצאה' : 'דוח לא נמצא';
 
-// DOWNLOAD C.O.C.
-app.get('/api/orders/:id/download-coc', (req, res) => {
-  const order = orders.find(o => o.id === req.params.id);
-  if (!order || !order.cocPath) return res.status(404).json({ error: 'תעודת התאמה לא נמצאה' });
-  const filePath = path.join(__dirname, order.cocPath.replace(/^\//, ''));
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'קובץ תעודת התאמה לא נמצא' });
+  if (!order || !storedPath) {
+    console.warn(`[download:${kind}] missing order or path order=${req.params.id}`);
+    return res.status(404).json({ error: notFoundMsg });
+  }
+  const filePath = path.join(__dirname, storedPath.replace(/^\//, ''));
+  if (!fs.existsSync(filePath)) {
+    console.warn(`[download:${kind}] file missing on disk path=${filePath}`);
+    return res.status(404).json({ error: `קובץ ${kind === 'coc' ? 'תעודת התאמה' : 'דוח'} לא נמצא` });
+  }
+  console.log(`[download:${kind}] order=${order.id} file=${filePath}`);
+  if (req.method === 'HEAD') {
+    res.status(200).end();
+    return;
+  }
   res.download(filePath);
-});
+}
+
+// DOWNLOAD report (GET + HEAD)
+app.get('/api/orders/:id/download', (req, res) => serveGeneratedFile('report', req, res));
+app.head('/api/orders/:id/download', (req, res) => serveGeneratedFile('report', req, res));
+
+// DOWNLOAD C.O.C. (GET + HEAD)
+app.get('/api/orders/:id/download-coc', (req, res) => serveGeneratedFile('coc', req, res));
+app.head('/api/orders/:id/download-coc', (req, res) => serveGeneratedFile('coc', req, res));
 
 // ─── Global Error Handler ────────────────────────────────────────────
 app.use((err, req, res, next) => {

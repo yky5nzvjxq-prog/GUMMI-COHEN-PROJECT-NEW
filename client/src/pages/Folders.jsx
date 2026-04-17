@@ -285,12 +285,12 @@ export default function Folders() {
                         <td className="p-3">
                           <div className="flex gap-1.5">
                             {order.reportPath && (
-                              <a href={downloadReportUrl(order.id)} className="bg-green-600 text-white p-1.5 rounded hover:bg-green-500">
+                              <a href={downloadReportUrl(order.id)} target="_blank" rel="noopener noreferrer" className="bg-green-600 text-white p-1.5 rounded hover:bg-green-500">
                                 <Download size={12} />
                               </a>
                             )}
                             {order.cocPath && (
-                              <a href={downloadCOCUrl(order.id)} className="bg-purple-600 text-white p-1.5 rounded hover:bg-purple-500">
+                              <a href={downloadCOCUrl(order.id)} target="_blank" rel="noopener noreferrer" className="bg-purple-600 text-white p-1.5 rounded hover:bg-purple-500">
                                 <Award size={12} />
                               </a>
                             )}
