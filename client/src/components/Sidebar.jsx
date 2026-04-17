@@ -37,7 +37,7 @@ export default function Sidebar() {
     <aside
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
-      className={`${expanded ? 'w-64' : 'w-16'} bg-gray-900 text-white min-h-screen flex flex-col fixed right-0 top-0 z-30 transition-all duration-300 overflow-hidden`}
+      className={`${expanded ? 'w-64' : 'w-16'} bg-gray-900 text-white min-h-screen flex flex-col flex-shrink-0 sticky top-0 h-screen transition-all duration-300 overflow-hidden z-30`}
     >
       <div className={`p-4 border-b border-gray-700 ${expanded ? 'px-5' : 'px-3'} transition-all duration-300`}>
         <h1 className={`font-bold whitespace-nowrap overflow-hidden transition-all duration-200 ${expanded ? 'text-xl opacity-100' : 'text-[0px] opacity-0 h-6'}`}>
@@ -47,7 +47,7 @@ export default function Sidebar() {
           מערכת ניהול הזמנות ובקרת איכות
         </p>
       </div>
-      <nav className="flex-1 py-4">
+      <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden">
         {links.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}

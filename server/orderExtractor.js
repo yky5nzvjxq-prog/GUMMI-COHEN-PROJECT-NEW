@@ -414,4 +414,4 @@ async function extractOrderData(filePath) {
   };
 }
 
-module.exports = { extractOrderData };
+module.exports = { extractOrderData, extractTextFromPDF, extractTextFromExcel, extractTextFromDocx };

@@ -5,13 +5,14 @@ import {
   uploadDrawing, uploadCustomerOrder, uploadQualityDocs, removeQualityDoc,
   generateReport, generateCOC,
   downloadReportUrl, downloadCOCUrl,
+  extractDocumentData,
 } from '../utils/api';
 import { statusBadge, formatDate } from '../utils/helpers';
 import { useToast } from '../components/Toast';
 import {
   Upload, FileSpreadsheet, Download, ArrowRight, Trash2, Save,
   FileText, FileImage, FolderOpen, Award, AlertTriangle, CheckCircle,
-  Plus, X as XIcon,
+  Plus, X as XIcon, Loader2, Zap, Info,
 } from 'lucide-react';
 
 export default function OrderDetail() {
@@ -28,6 +29,13 @@ export default function OrderDetail() {
   const [generatingCOC, setGeneratingCOC] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [activeTab, setActiveTab] = useState('documents');
+
+  // Extraction state
+  const [extracting, setExtracting] = useState(false);
+  const [extractionSource, setExtractionSource] = useState(''); // which file triggered extraction
+  const [rawMatConflicts, setRawMatConflicts] = useState({}); // fields with conflicting values from multiple sources
+  const [autoFilledDims, setAutoFilledDims] = useState(false); // whether dims were auto-populated
+  const [autoFilledRawMat, setAutoFilledRawMat] = useState({}); // which rawMat fields were auto-filled { field: confidence }
 
   useEffect(() => {
     loadOrder();
@@ -58,6 +66,90 @@ export default function OrderDetail() {
     setLoading(false);
   }
 
+  // ─── Document Data Extraction ────────────────────────────────────
+  async function runDocumentExtraction(filePath, source) {
+    setExtracting(true);
+    setExtractionSource(source);
+
+    const result = await extractDocumentData(filePath);
+    setExtracting(false);
+    setExtractionSource('');
+
+    // Show warnings from the pipeline
+    if (result.warnings && result.warnings.length > 0) {
+      result.warnings.forEach(w => toast.info(w));
+    }
+
+    // Show OCR info
+    if (result.ocrUsed) {
+      const pct = Math.round((result.ocrConfidence || 0) * 100);
+      toast.info(`OCR שימוש ב — ביטחון: ${pct}%`);
+      if (result.ocrConfidence != null && result.ocrConfidence < 0.5) {
+        toast.warning('הביטחון בחילוץ נמוך — מומלץ לבדוק את הנתונים בקפידה');
+      }
+    }
+
+    if (result.error && !result.dimensions?.length && !result.rawMaterial?.extracted) {
+      toast.info(result.error || 'לא נמצאו נתונים בקובץ');
+      return;
+    }
+
+    let extractedCount = 0;
+
+    // Auto-fill dimensions (only if current table is empty)
+    if (result.dimensions && result.dimensions.length > 0) {
+      if (dims.length === 0) {
+        setDims(result.dimensions);
+        setAutoFilledDims(true);
+        extractedCount += result.dimensions.length;
+        const ocrNote = result.ocrUsed ? ' (OCR)' : '';
+        toast.success(`${result.dimensions.length} מידות חולצו אוטומטית מ${source}${ocrNote}`);
+      } else {
+        toast.info(`נמצאו ${result.dimensions.length} מידות בקובץ, אך טבלת המידות כבר מכילה נתונים. ניתן לנקות ולנסות שוב.`);
+      }
+    }
+
+    // Auto-fill raw material fields (only empty fields, or flag conflicts)
+    if (result.rawMaterial && result.rawMaterial.extracted) {
+      const { extracted, confidence } = result.rawMaterial;
+      const newRawMat = { ...rawMat };
+      const newAutoFilled = { ...autoFilledRawMat };
+      const newConflicts = { ...rawMatConflicts };
+      let matCount = 0;
+
+      for (const [field, value] of Object.entries(extracted)) {
+        if (!value) continue;
+
+        const currentVal = rawMat[field];
+        if (!currentVal || currentVal.trim() === '') {
+          newRawMat[field] = value;
+          newAutoFilled[field] = confidence[field] || 'low';
+          matCount++;
+        } else if (currentVal.trim() !== value.trim()) {
+          newConflicts[field] = {
+            current: currentVal,
+            suggested: value,
+            source,
+            confidence: confidence[field] || 'low',
+          };
+        }
+      }
+
+      if (matCount > 0) {
+        setRawMat(newRawMat);
+        setAutoFilledRawMat(newAutoFilled);
+        extractedCount += matCount;
+      }
+      if (Object.keys(newConflicts).length > Object.keys(rawMatConflicts).length) {
+        setRawMatConflicts(newConflicts);
+      }
+    }
+
+    if (extractedCount === 0 && !result.error) {
+      toast.info('לא נמצאו נתונים חדשים לחילוץ מהקובץ');
+    }
+  }
+
   // ─── File Uploads ────────────────────────────────────────────────
   async function handleUploadDrawing(e) {
     const file = e.target.files[0];
@@ -68,6 +160,11 @@ export default function OrderDetail() {
     if (result.error) { toast.error(result.error); return; }
     setOrder(result);
     toast.success(`שרטוט "${file.name}" הועלה בהצלחה`);
+
+    // Auto-extract dimensions and raw material from the drawing
+    if (result.files?.drawing?.serverPath) {
+      await runDocumentExtraction(result.files.drawing.serverPath, 'שרטוט');
+    }
   }
 
   async function handleUploadCustomerOrder(e) {
@@ -79,6 +176,11 @@ export default function OrderDetail() {
     if (result.error) { toast.error(result.error); return; }
     setOrder(result);
     toast.success(`הזמנת לקוח "${file.name}" הועלה בהצלחה`);
+
+    // Auto-extract raw material from customer order
+    if (result.files?.customerOrder?.serverPath) {
+      await runDocumentExtraction(result.files.customerOrder.serverPath, 'הזמנת לקוח');
+    }
   }
 
   async function handleUploadQualityDocs(e) {
@@ -99,6 +201,27 @@ export default function OrderDetail() {
     toast.info('מסמך הוסר');
   }
 
+  // ─── Accept/Reject conflict ──────────────────────────────────────
+  function acceptConflict(field) {
+    const conflict = rawMatConflicts[field];
+    if (!conflict) return;
+    setRawMat(prev => ({ ...prev, [field]: conflict.suggested }));
+    setAutoFilledRawMat(prev => ({ ...prev, [field]: conflict.confidence }));
+    setRawMatConflicts(prev => {
+      const copy = { ...prev };
+      delete copy[field];
+      return copy;
+    });
+  }
+
+  function dismissConflict(field) {
+    setRawMatConflicts(prev => {
+      const copy = { ...prev };
+      delete copy[field];
+      return copy;
+    });
+  }
+
   // ─── Dimensions ──────────────────────────────────────────────────
   function updateDim(idx, field, value) {
     setDims(prev => {
@@ -116,9 +239,26 @@ export default function OrderDetail() {
     setDims(prev => prev.filter((_, i) => i !== idx));
   }
 
+  function clearDimsForReExtract() {
+    setDims([]);
+    setAutoFilledDims(false);
+    // Re-run extraction if drawing exists
+    if (order?.files?.drawing?.serverPath) {
+      runDocumentExtraction(order.files.drawing.serverPath, 'שרטוט');
+    }
+  }
+
   // ─── Raw Material ────────────────────────────────────────────────
   function updateRawMat(field, value) {
     setRawMat(prev => ({ ...prev, [field]: value }));
+    // Clear auto-filled indicator when user manually edits
+    if (autoFilledRawMat[field]) {
+      setAutoFilledRawMat(prev => {
+        const copy = { ...prev };
+        delete copy[field];
+        return copy;
+      });
+    }
   }
 
   // ─── Save (without generating) ──────────────────────────────────
@@ -176,6 +316,16 @@ export default function OrderDetail() {
   const st = statusBadge(order.status);
   const files = order.files || { drawing: null, customerOrder: null, qualityDocs: [] };
 
+  const FIELD_LABELS = {
+    materialType: 'סוג חומר',
+    description: 'תיאור חומר',
+    supplier: 'ספק',
+    batchNumber: "מס' אצווה",
+    certNumber: "מס' תעודה",
+    hardness: 'קשיות',
+    color: 'צבע',
+  };
+
   const tabs = [
     { key: 'documents', label: 'מסמכים', icon: FolderOpen },
     { key: 'dimensions', label: 'טבלת מידות', icon: FileSpreadsheet },
@@ -202,6 +352,14 @@ export default function OrderDetail() {
           <Trash2 size={14} /> מחק הזמנה
         </button>
       </div>
+
+      {/* Extraction indicator */}
+      {extracting && (
+        <div className="mb-4 flex items-center gap-2 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-4 py-3 rounded-lg text-sm animate-pulse">
+          <Loader2 size={16} className="animate-spin" />
+          <span>מחלץ נתונים מ{extractionSource}... (עשוי לקחת עד 30 שניות עבור קבצי תמונה)</span>
+        </div>
+      )}
 
       {/* Order Info Card */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 mb-6">
@@ -252,7 +410,6 @@ export default function OrderDetail() {
       {/* ═══ TAB: Documents ═══ */}
       {activeTab === 'documents' && (
         <div className="space-y-4">
-          {/* Drawing Upload */}
           <FileUploadCard
             title="שרטוט טכני"
             icon={<FileImage size={20} className="text-blue-500" />}
@@ -262,9 +419,9 @@ export default function OrderDetail() {
             onChange={handleUploadDrawing}
             hint="PDF / תמונה"
             onDelete={files.drawing ? () => handleDeleteFile('drawing', 'שרטוט') : null}
+            extracting={extracting && extractionSource === 'שרטוט'}
           />
 
-          {/* Customer Order Upload */}
           <FileUploadCard
             title="הזמנת לקוח"
             icon={<FileText size={20} className="text-green-500" />}
@@ -274,9 +431,9 @@ export default function OrderDetail() {
             onChange={handleUploadCustomerOrder}
             hint="PDF / Excel / Word / תמונה"
             onDelete={files.customerOrder ? () => handleDeleteFile('customerOrder', 'הזמנת לקוח') : null}
+            extracting={extracting && extractionSource === 'הזמנת לקוח'}
           />
 
-          {/* Quality Docs Upload */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
             <div className="flex items-center gap-3 mb-4">
               <FolderOpen size={20} className="text-purple-500" />
@@ -288,10 +445,7 @@ export default function OrderDetail() {
                 {files.qualityDocs.map((doc, idx) => (
                   <div key={idx} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 px-4 py-2 rounded-lg text-sm dark:text-gray-300">
                     <span>{doc.originalName}</span>
-                    <button
-                      onClick={() => handleRemoveQualityDoc(idx)}
-                      className="text-red-400 hover:text-red-600"
-                    >
+                    <button onClick={() => handleRemoveQualityDoc(idx)} className="text-red-400 hover:text-red-600">
                       <XIcon size={14} />
                     </button>
                   </div>
@@ -312,8 +466,20 @@ export default function OrderDetail() {
       {activeTab === 'dimensions' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="font-semibold text-gray-800 dark:text-gray-100">טבלת מידות</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="font-semibold text-gray-800 dark:text-gray-100">טבלת מידות</h2>
+              {autoFilledDims && (
+                <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2.5 py-1 rounded-full">
+                  <Zap size={12} /> חולץ אוטומטית
+                </span>
+              )}
+            </div>
             <div className="flex gap-2">
+              {dims.length > 0 && files.drawing && (
+                <button onClick={clearDimsForReExtract} className="text-sm text-orange-500 hover:text-orange-600 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                  <Zap size={14} /> חלץ מחדש
+                </button>
+              )}
               <button onClick={addDim} className="text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-300 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
                 <Plus size={14} /> הוסף שורה
               </button>
@@ -326,8 +492,8 @@ export default function OrderDetail() {
           {dims.length === 0 ? (
             <div className="text-center py-10">
               <AlertTriangle size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-              <p className="text-sm text-gray-400 mb-2">אין מידות — הוסף שורות ידנית</p>
-              <p className="text-xs text-gray-300 dark:text-gray-500">המערכת לא ממציאה נתונים. יש להזין מידות מהשרטוט או מהזמנת הלקוח.</p>
+              <p className="text-sm text-gray-400 mb-2">אין מידות — הוסף שורות ידנית או העלה שרטוט לחילוץ אוטומטי</p>
+              <p className="text-xs text-gray-300 dark:text-gray-500">העלאת שרטוט PDF תחלץ מידות אוטומטית (אם קיימות בקובץ)</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -374,7 +540,7 @@ export default function OrderDetail() {
           {dims.some(d => d.flaggedForReview) && (
             <div className="mt-4 flex items-center gap-2 text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/30 px-4 py-2 rounded-lg text-sm">
               <AlertTriangle size={16} />
-              <span>שורות מסומנות בצהוב דורשות אימות ידני — נא לבדוק את הנתונים</span>
+              <span>שורות מסומנות בצהוב חולצו אוטומטית ודורשות אימות ידני — נא לבדוק את הנתונים</span>
             </div>
           )}
         </div>
@@ -384,15 +550,43 @@ export default function OrderDetail() {
       {activeTab === 'rawMaterial' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="font-semibold text-gray-800 dark:text-gray-100">פרטי חומר גלם</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="font-semibold text-gray-800 dark:text-gray-100">פרטי חומר גלם</h2>
+              {Object.keys(autoFilledRawMat).length > 0 && (
+                <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2.5 py-1 rounded-full">
+                  <Zap size={12} /> {Object.keys(autoFilledRawMat).length} שדות חולצו
+                </span>
+              )}
+            </div>
             <button onClick={handleSave} className="text-sm bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
               <Save size={14} /> שמור
             </button>
           </div>
 
           <p className="text-xs text-gray-400 mb-4">
-            הזן פרטי חומר גלם מהשרטוט או מהמסמכים שהועלו. המערכת לא ממלאת שדות שלא סופקו.
+            שדות חומר גלם ימולאו אוטומטית מהשרטוט או מהזמנת הלקוח (אם קיימים). ניתן לערוך כל שדה.
           </p>
+
+          {/* Conflict alerts */}
+          {Object.keys(rawMatConflicts).length > 0 && (
+            <div className="mb-4 space-y-2">
+              {Object.entries(rawMatConflicts).map(([field, conflict]) => (
+                <div key={field} className="flex items-center gap-3 bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 px-4 py-2 rounded-lg text-sm">
+                  <Info size={16} className="text-orange-500 flex-shrink-0" />
+                  <span className="flex-1 text-orange-700 dark:text-orange-300">
+                    <strong>{FIELD_LABELS[field] || field}</strong>: ערך שונה נמצא ב{conflict.source} — "{conflict.suggested}"
+                    (ערך נוכחי: "{conflict.current}")
+                  </span>
+                  <button onClick={() => acceptConflict(field)} className="text-xs bg-orange-100 dark:bg-orange-800 text-orange-700 dark:text-orange-300 px-2 py-1 rounded hover:bg-orange-200">
+                    החלף
+                  </button>
+                  <button onClick={() => dismissConflict(field)} className="text-xs text-gray-400 hover:text-gray-600">
+                    <XIcon size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
@@ -405,13 +599,27 @@ export default function OrderDetail() {
               { key: 'color', label: 'צבע', placeholder: '' },
             ].map(({ key, label, placeholder }) => (
               <div key={key}>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  {label}
+                  {autoFilledRawMat[key] && (
+                    <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full mr-1 ${
+                      autoFilledRawMat[key] === 'high'
+                        ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'
+                        : 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400'
+                    }`}>
+                      <Zap size={9} />
+                      {autoFilledRawMat[key] === 'high' ? 'חולץ' : 'דורש בדיקה'}
+                    </span>
+                  )}
+                </label>
                 <input
                   type="text"
                   value={rawMat[key] || ''}
                   onChange={e => updateRawMat(key, e.target.value)}
                   placeholder={placeholder}
-                  className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none"
+                  className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none dark:bg-gray-700 dark:text-gray-200 ${
+                    autoFilledRawMat[key] ? 'border-green-300 dark:border-green-700' : 'border-gray-300 dark:border-gray-600'
+                  }`}
                 />
               </div>
             ))}
@@ -438,7 +646,6 @@ export default function OrderDetail() {
       {/* ═══ TAB: Generate ═══ */}
       {activeTab === 'generate' && (
         <div className="space-y-4">
-          {/* Pre-generation checklist */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
             <h2 className="font-semibold text-gray-800 dark:text-gray-100 mb-4">בדיקת מוכנות</h2>
             <div className="space-y-2">
@@ -449,7 +656,6 @@ export default function OrderDetail() {
             </div>
           </div>
 
-          {/* Approve Order */}
           {(order.status === 'pending_review' || order.status === 'new' || order.status === 'drawing_uploaded') && (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
               <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">אישור הזמנה</h3>
@@ -475,7 +681,6 @@ export default function OrderDetail() {
             </div>
           )}
 
-          {/* Generate Excel Report */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
             <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">דוח Excel (מידות + חומר גלם)</h3>
             <p className="text-xs text-gray-400 mb-4">
@@ -510,7 +715,6 @@ export default function OrderDetail() {
             </div>
           </div>
 
-          {/* Generate C.O.C. as DOCX */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
             <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">תעודת התאמה (C.O.C.) — Word</h3>
             <p className="text-xs text-gray-400 mb-4">
@@ -573,12 +777,18 @@ export default function OrderDetail() {
 
 // ─── Sub-components ──────────────────────────────────────────────────
 
-function FileUploadCard({ title, icon, file, uploading, accept, onChange, hint, onDelete }) {
+function FileUploadCard({ title, icon, file, uploading, accept, onChange, hint, onDelete, extracting }) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
       <div className="flex items-center gap-3 mb-4">
         {icon}
         <h3 className="font-semibold text-gray-800 dark:text-gray-100">{title}</h3>
+        {extracting && (
+          <span className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2.5 py-1 rounded-full animate-pulse">
+            <Loader2 size={12} className="animate-spin" />
+            מחלץ נתונים...
+          </span>
+        )}
       </div>
 
       {file ? (

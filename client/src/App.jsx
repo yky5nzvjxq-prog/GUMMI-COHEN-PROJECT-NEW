@@ -19,9 +19,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <ToastProvider>
-        <div className="flex">
+        <div className="flex min-h-screen">
           <Sidebar />
-          <main className="flex-1 mr-16 min-h-screen transition-all duration-300">
+          <main className="flex-1 min-w-0 min-h-screen transition-all duration-300">
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/new-order" element={<NewOrder />} />

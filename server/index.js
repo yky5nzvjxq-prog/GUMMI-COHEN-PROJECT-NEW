@@ -7,6 +7,8 @@ const { v4: uuidv4 } = require('uuid');
 const { generateExcelReport } = require('./excelGenerator');
 const { generateCOCDocx } = require('./docxGenerator');
 const { extractOrderData } = require('./orderExtractor');
+const { extractDocumentDataFull } = require('./extractionPipeline');
+const { initOCR, terminateOCR } = require('./ocrEngine');
 
 const app = express();
 app.use(cors());
@@ -446,6 +448,31 @@ app.post('/api/extract-order-data', async (req, res) => {
   }
 });
 
+// ─── EXTRACT DOCUMENT DATA (dimensions + raw material + OCR) ────────
+
+app.post('/api/extract-document-data', async (req, res) => {
+  const { filePath } = req.body;
+  if (!filePath) return res.status(400).json({ error: 'נתיב קובץ חסר' });
+
+  try {
+    req.setTimeout(90000); // Allow up to 90s for OCR processing
+    const result = await extractDocumentDataFull(filePath);
+    res.json(result);
+  } catch (err) {
+    console.error('Document extraction error:', err);
+    res.status(500).json({
+      dimensions: [],
+      rawMaterial: { extracted: {}, confidence: {} },
+      rawText: '',
+      ocrUsed: false,
+      ocrConfidence: null,
+      processingTimeMs: 0,
+      error: 'שגיאה בחילוץ נתונים: ' + err.message,
+      warnings: [],
+    });
+  }
+});
+
 // ─── FILE UPLOAD ENDPOINTS (for existing orders) ─────────────────────
 
 app.post('/api/orders/:id/upload/drawing', upload.single('file'), (req, res) => {
@@ -593,4 +620,18 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+  // Eagerly initialize OCR worker (downloads traineddata on first run)
+  initOCR().catch(err => console.warn('[OCR] Pre-init failed (will retry on first use):', err.message));
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  await terminateOCR();
+  process.exit(0);
+});
+process.on('SIGINT', async () => {
+  await terminateOCR();
+  process.exit(0);
+});

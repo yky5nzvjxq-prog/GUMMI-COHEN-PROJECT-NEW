@@ -9,7 +9,14 @@
       "Bash(npx tailwindcss:*)",
       "Bash(grep -c \"is\\(.dark\" dist/assets/*.css)",
       "Bash(grep -o \"dark\\\\\\\\\\\\\\\\:\" dist/assets/*.css)",
-      "Bash(taskkill //F //IM node.exe)"
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(node -c index.js)",
+      "Bash(node -c dimensionExtractor.js)",
+      "Bash(node -c rawMaterialExtractor.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :5173)",
+      "Bash(echo \"PID: $!\")"
     ]
   }
 }

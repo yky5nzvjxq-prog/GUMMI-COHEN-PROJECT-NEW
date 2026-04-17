@@ -90,6 +90,27 @@ export async function extractOrderData(filePath) {
   });
 }
 
+export async function extractDocumentData(filePath) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout for OCR
+  try {
+    const result = await request(`${BASE}/extract-document-data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filePath }),
+      signal: controller.signal,
+    });
+    return result;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      return { error: 'הזמן הקצוב לחילוץ נתונים עבר. נסה שוב או העלה קובץ קטן יותר.' };
+    }
+    return { error: 'שגיאת תקשורת — לא ניתן להתחבר לשרת' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 //─── File Uploads ────────────────────────────────────────────────────
 
 export async function uploadDrawing(orderId, file) {
