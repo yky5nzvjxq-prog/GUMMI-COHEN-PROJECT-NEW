@@ -19,6 +19,10 @@ function extractDimensions(text, options = {}) {
   const dimensions = [];
   const seen = new Set(); // prevent duplicates
 
+  // Detect document-wide unit hint (mm vs inch) from headers/legends.
+  // Individual dimensions can still override via a trailing unit suffix.
+  const docUnit = detectDocumentUnit(text);
+
   // Pattern 1: Diameter dimensions — Ø50.00 ±0.5 or ⌀30 +0.1/-0.05
   const diameterPatterns = [
     // Ø50.00 ±0.50
@@ -42,6 +46,8 @@ function extractDimensions(text, options = {}) {
         tolerance: `±${tol}`,
         min: String(round(nominal - tol)),
         max: String(round(nominal + tol)),
+        unit: detectUnitAt(text, m.index, m[0], docUnit),
+        critical: isCriticalNearby(text, m.index),
         remarks: '',
         flaggedForReview: true,
       });
@@ -63,6 +69,8 @@ function extractDimensions(text, options = {}) {
         tolerance: `+${plus}/-${minus}`,
         min: String(round(nominal - minus)),
         max: String(round(nominal + plus)),
+        unit: detectUnitAt(text, m.index, m[0], docUnit),
+        critical: isCriticalNearby(text, m.index),
         remarks: '',
         flaggedForReview: true,
       });
@@ -86,6 +94,8 @@ function extractDimensions(text, options = {}) {
         tolerance: `±${tol}`,
         min: String(round(nominal - tol)),
         max: String(round(nominal + tol)),
+        unit: detectUnitAt(text, m.index, m[0], docUnit),
+        critical: isCriticalNearby(text, m.index),
         remarks: '',
         flaggedForReview: true,
       });
@@ -109,6 +119,8 @@ function extractDimensions(text, options = {}) {
         tolerance: `+${plus}/-${minus}`,
         min: String(round(nominal - minus)),
         max: String(round(nominal + plus)),
+        unit: detectUnitAt(text, m.index, m[0], docUnit),
+        critical: isCriticalNearby(text, m.index),
         remarks: '',
         flaggedForReview: true,
       });
@@ -144,6 +156,8 @@ function extractDimensions(text, options = {}) {
           tolerance: '',
           min: '',
           max: '',
+          unit: detectUnitAt(text, m.index, m[0], docUnit),
+          critical: isCriticalNearby(text, m.index),
           remarks: `חולץ אוטומטית (${label})`,
           flaggedForReview: true,
         });
@@ -169,6 +183,8 @@ function extractDimensions(text, options = {}) {
         tolerance: tol,
         min,
         max,
+        unit: detectUnitAt(text, m.index, m[0], docUnit),
+        critical: isCriticalNearby(text, m.index),
         remarks: 'חולץ מטבלה',
         flaggedForReview: true,
       });
@@ -194,6 +210,36 @@ function extractDimensions(text, options = {}) {
 
 function round(num) {
   return Math.round(num * 1000) / 1000;
+}
+
+// Detect document-level default unit from headers/legends.
+function detectDocumentUnit(text) {
+  const sample = text.slice(0, 2000) + '\n' + text.slice(-1000);
+  // Explicit declarations take priority.
+  if (/\b(all\s+dimensions?\s+in\s+inch(?:es)?|units?\s*[:\-]\s*inch|inches)\b/i.test(sample)) return 'inch';
+  if (/\b(all\s+dimensions?\s+in\s+mm|units?\s*[:\-]\s*mm|millimet(?:er|re)s?)\b/i.test(sample)) return 'mm';
+  // Count which unit marker is more common.
+  const mmHits = (sample.match(/\b\d+(?:\.\d+)?\s*mm\b/gi) || []).length;
+  const inchHits = (sample.match(/\b\d+(?:\.\d+)?\s*(?:in|inch|inches|")\b/gi) || []).length;
+  if (inchHits > mmHits && inchHits >= 2) return 'inch';
+  return 'mm';
+}
+
+// Detect unit for a specific match by looking at a short suffix window.
+function detectUnitAt(text, index, matchedText, fallback) {
+  const end = index + matchedText.length;
+  const suffix = text.slice(end, end + 20);
+  if (/^\s*(?:in|inch|inches|")/i.test(suffix)) return 'inch';
+  if (/^\s*mm\b/i.test(suffix)) return 'mm';
+  return fallback;
+}
+
+// Mark as critical if a critical marker sits within ~120 chars before or after.
+function isCriticalNearby(text, index) {
+  const window = text.slice(Math.max(0, index - 140), index + 140);
+  return /\b(CRITICAL|CRIT|KEY\s*(?:DIM|DIMENSION)|⊛|◆)\b/i.test(window)
+      || /\bקריט(?:י|ית)\b/.test(window)
+      || /\*\s*CRIT/i.test(window);
 }
 
 module.exports = { extractDimensions };

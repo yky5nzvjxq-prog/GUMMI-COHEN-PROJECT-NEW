@@ -90,6 +90,30 @@ export async function extractOrderData(filePath) {
   });
 }
 
+// Run multi-file extraction across every file on an order (drawing +
+// customer order + quality docs). Returns merged dimensions, raw material,
+// and conflicts. Does NOT persist on the server.
+export async function extractAllForOrder(orderId) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 180000);
+  try {
+    const result = await request(`${BASE}/orders/${orderId}/extract-all`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: controller.signal,
+    });
+    return result;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      return { error: 'הזמן הקצוב לחילוץ עבר. נסה שוב עם פחות קבצים.' };
+    }
+    return { error: 'שגיאת תקשורת — לא ניתן להתחבר לשרת' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function extractDocumentData(filePath) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout for OCR
