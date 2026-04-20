@@ -679,6 +679,22 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3001;
+app.post("/api/orders/:id/extract-all", async (req, res) => {
+  try {
+    const orderId = req.params.id;
+
+    console.log("extract-all called for order:", orderId);
+
+    return res.json({
+      success: true,
+      message: "extract-all route works",
+      orderId
+    });
+  } catch (error) {
+    console.error("extract-all error:", error);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   // Eagerly initialize OCR worker (downloads traineddata on first run)
